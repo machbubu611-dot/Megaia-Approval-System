@@ -99,12 +99,8 @@
                     images: []
                 },
                 
-                // 簽核列表資料庫
-                approvals: [
-                    { id: 'M0032026050101', date: '2026-05-01', applicant: '王小明', branch: '台中向上', category: '人事薪酬', subject: '5月份獎金發放審核', status: '已簽核', currentLevel: 'vp', special: { name: '李大華', title: '店經理', amount: '5000', desc: '本月業績達標獎金發放' }, generalDesc: '', images: [], history: [{ time: '2026/05/01 09:15:00', user: '王小明 (台中向上)', action: '發起簽核' }, { time: '2026/05/01 11:30:00', user: '營運協理', action: '加簽至營運副總' }, { time: '2026/05/02 14:00:00', user: '營運副總', action: '核准通過' }] },
-                    { id: 'M0012026050501', date: '2026-05-05', applicant: '陳小美', branch: '台北仁愛', category: '採購需求', subject: '診所耗材補充申請', status: '送簽中', currentLevel: 'manager', special: { name: '', title: '', amount: '', desc: '' }, generalDesc: '申請下半年度醫療耗材與辦公室文具採購，共計需 15,000 元。', images: [], history: [{ time: '2026/05/05 10:20:00', user: '陳小美 (台北仁愛)', action: '發起簽核' }] },
-                    { id: 'M0052026050601', date: '2026-05-06', applicant: '林大山', branch: '高雄巨蛋', category: '專案業務', subject: 'VIP客戶客製化療程特批', status: '退回', currentLevel: 'done', special: { name: 'VIP李小姐', title: '其他', amount: '80000', desc: '特例折扣核准' }, generalDesc: '', images: [], history: [{ time: '2026/05/06 14:20:00', user: '林大山 (高雄巨蛋)', action: '發起簽核' }, { time: '2026/05/06 15:10:00', user: '營運協理', action: '退回申請' }] }
-                ],
+                // 簽核列表資料庫 (清空示範資料，準備正式上線)
+                approvals: [],
 
                 // --- 計算屬性 ---
                 get isSpecialCategory() { return ['人事薪酬', '專案業務'].includes(this.form.category); },
@@ -200,6 +196,9 @@
                     if (!this.changePwdModal.oldPwd || !this.changePwdModal.newPwd || !this.changePwdModal.confirmPwd) {
                         return this.showToast('⚠️ 所有欄位皆為必填！');
                     }
+                    if (this.changePwdModal.newPwd.length < 4) {
+                        return this.showToast('❌ 新密碼長度至少需要 4 碼！');
+                    }
                     if (this.changePwdModal.oldPwd !== this.currentUser.password) {
                         return this.showToast('❌ 目前密碼輸入錯誤！');
                     }
@@ -239,6 +238,10 @@
                 savePassword(username) {
                     if (!this.newPwdInput.trim()) {
                         this.showToast('⚠️ 密碼不可為空白！');
+                        return;
+                    }
+                    if (this.newPwdInput.length < 4) {
+                        this.showToast('❌ 密碼長度至少需要 4 碼！');
                         return;
                     }
                     const acc = this.accounts.find(a => a.username === username);
@@ -332,6 +335,24 @@
                     this.showToast(`📊 成功！已下載 ${exportList.length} 筆獎金明細 (Excel xlsx 格式)。`);
                 },
 
+                // 複製舊單據成為新單據
+                copyToNewForm(item) {
+                    this.editingId = null; // 確保這是「建立新單」，而不是覆蓋舊單
+                    this.form = {
+                        date: new Date().toISOString().split('T')[0], // 預設帶入今天日期
+                        applicant: item.applicant,
+                        branch: item.branch,
+                        category: item.category,
+                        subject: item.subject,
+                        special: JSON.parse(JSON.stringify(item.special || { name: '', title: '', amount: '', desc: '' })),
+                        generalDesc: item.generalDesc || '',
+                        images: JSON.parse(JSON.stringify(item.images || []))
+                    };
+                    this.view = 'newForm';
+                    this.showToast('ℹ️ 已載入舊單據內容，請確認日期與內容後送出建立新單。');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                },
+
                 // 退回單據重新編輯
                 editResubmit(item) {
                     this.editingId = item.id;
@@ -354,7 +375,7 @@
                     const nowStr = new Date().toLocaleString('zh-TW', { hour12: false });
                     
                     if (this.editingId) {
-                        // 重新編輯送出
+                        // 重新編輯送出 (覆蓋舊單)
                         const item = this.approvals.find(a => a.id === this.editingId);
                         if (item) {
                             item.date = this.form.date;
@@ -372,7 +393,7 @@
                             this.showToast(`✅ 單號 #${item.id} 已重新送出！`);
                         }
                     } else {
-                        // 建立新單
+                        // 建立新單 (包含複製的單據)
                         const newApproval = {
                             id: this.generateSignoffId(this.form.branch, this.form.date),
                             date: this.form.date,
@@ -603,7 +624,7 @@
 
                 <div class="bg-white rounded-xl shadow-sm border border-morandi-border overflow-hidden">
                     <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse min-w-[950px]">
+                        <table class="w-full text-left border-collapse min-w-[1000px]">
                             <thead>
                                 <tr class="bg-morandi-surface text-sm border-b border-morandi-border text-morandi-text">
                                     <th class="p-4 font-semibold">單號</th>
@@ -662,7 +683,12 @@
                                                 <button x-show="!(item.status === '送簽中' && item.currentLevel === currentUser?.role)" @click="openActionModal(item)" class="text-white bg-morandi-primary hover:bg-morandi-hover px-3 py-1.5 rounded-lg text-xs transition-colors font-bold shadow-sm">
                                                     檢視內容
                                                 </button>
-                                                <button @click="copyLink(item.id)" class="text-morandi-primary hover:text-morandi-hover bg-morandi-surface border border-morandi-border px-2 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-center shadow-sm" title="複製連結">
+                                                <!-- 複製單據按鈕 -->
+                                                <button x-show="currentUser?.role === 'admin' || currentUser?.role === 'branch'" @click="copyToNewForm(item)" class="text-white bg-blue-500 hover:bg-blue-600 px-2 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-center shadow-sm" title="複製此單建立新單">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                                </button>
+                                                <!-- 複製連結按鈕 -->
+                                                <button @click="copyLink(item.id)" class="text-morandi-primary hover:text-morandi-hover bg-morandi-surface border border-morandi-border px-2 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-center shadow-sm" title="複製專屬連結">
                                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
                                                 </button>
                                             </div>
@@ -912,7 +938,7 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-morandi-text mb-1">新密碼</label>
-                            <input type="password" x-model="changePwdModal.newPwd" class="w-full border border-morandi-border focus:ring-1 focus:ring-morandi-primary rounded p-2 text-sm bg-morandi-bg outline-none" placeholder="請輸入新密碼">
+                            <input type="password" x-model="changePwdModal.newPwd" class="w-full border border-morandi-border focus:ring-1 focus:ring-morandi-primary rounded p-2 text-sm bg-morandi-bg outline-none" placeholder="請輸入新密碼 (至少 4 碼)">
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-morandi-text mb-1">確認新密碼</label>
