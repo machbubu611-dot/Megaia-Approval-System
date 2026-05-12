@@ -2,14 +2,13 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- 加入 viewport-fit=cover 防止 iOS 點擊輸入框時異常放大 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>美加營運現場簽核系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 引入 SheetJS 用於匯出正統 Excel xlsx 檔案 -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     
-    <!-- 引入 Firebase 即時資料庫模組 -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -43,108 +42,74 @@
                 const getPublicDoc = (col, docId) => doc(db, 'artifacts', appId, 'public', 'data', col, docId);
                 const getPublicCol = (col) => collection(db, 'artifacts', appId, 'public', 'data', col);
                 
-                // 綁定寫入功能給 Alpine 使用
                 app.saveConfigToDB = async () => setDoc(getPublicDoc('settings', 'config'), { categoryOptions: Alpine.raw(app.categoryOptions), titleOptions: Alpine.raw(app.titleOptions) });
                 app.saveAccountsToDB = async () => setDoc(getPublicDoc('settings', 'accounts'), { accounts: Alpine.raw(app.accounts) });
                 app.saveApprovalToDB = async (item) => setDoc(getPublicDoc('approvals', item.id), Alpine.raw(item));
                 app.deleteApprovalFromDB = async (id) => deleteDoc(getPublicDoc('approvals', id));
 
-                // 狀態追蹤，確保所有資料就緒才允許登入
                 let accLoaded = false, confLoaded = false, appLoaded = false;
                 const checkReady = () => { if(accLoaded && confLoaded && appLoaded) app.isDbReady = true; };
 
-                // 監聽：帳號密碼同步
                 onSnapshot(getPublicDoc('settings', 'accounts'), (snap) => {
                     if (snap.exists()) app.accounts = snap.data().accounts;
-                    else app.saveAccountsToDB(); // 初始化
+                    else app.saveAccountsToDB();
                     accLoaded = true; checkReady();
                 });
 
-                // 監聽：職稱與類別選項同步
                 onSnapshot(getPublicDoc('settings', 'config'), (snap) => {
                     if (snap.exists()) {
                         app.categoryOptions = snap.data().categoryOptions || app.categoryOptions;
                         app.titleOptions = snap.data().titleOptions || app.titleOptions;
-                    } else app.saveConfigToDB(); // 初始化
+                    } else app.saveConfigToDB();
                     confLoaded = true; checkReady();
                 });
 
-                // 監聽：簽核單據同步
                 onSnapshot(getPublicCol('approvals'), (snap) => {
                     const loaded = [];
                     snap.forEach(d => loaded.push(d.data()));
-                    loaded.sort((a,b) => b.id.localeCompare(a.id)); // 新單號排前面
+                    loaded.sort((a,b) => b.id.localeCompare(a.id));
                     app.approvals = loaded;
                     appLoaded = true; checkReady();
-                    app.checkDeepLink(); // 資料更新後檢查是否需要彈出指定單據
+                    app.checkDeepLink();
                 });
             });
         };
     </script>
 
     <style>
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        /* --- 基礎優化與滾動條 --- */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #fbf8f8; }
         ::-webkit-scrollbar-thumb { background: #e3d5d5; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #c49a9a; }
         [x-cloak] { display: none !important; }
         .dragging { opacity: 0.5; background-color: #f3ecec; }
 
-        /* =========================================================================
-           全域跨裝置相容性備援樣式 (Ultimate Fallback CSS)
-           專為不支援 Tailwind CDN 的舊版 iOS Safari 量身打造，確保介面排版不崩壞
-        ========================================================================= */
-        body { margin: 0; padding: 0; background-color: #fbf8f8; color: #5a4c4c; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        
-        /* 登入頁面備援 */
-        .login-wrapper { display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 1rem; box-sizing: border-box; }
-        .login-card { background: white; padding: 2rem; border-radius: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 28rem; text-align: center; border: 1px solid #e3d5d5; box-sizing: border-box; }
-        .login-logo { height: 5rem; max-width: 100%; object-fit: contain; margin: 0 auto 1.5rem auto; display: block; }
-        
-        /* 主介面結構備援 */
-        .sys-header { background-color: #f3ecec; border-bottom: 1px solid #e3d5d5; position: sticky; top: 0; z-index: 20; padding: 0.75rem 1rem; }
-        .sys-header-inner { max-width: 72rem; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 1rem; }
-        .sys-nav { display: flex; gap: 1rem; overflow-x: auto; white-space: nowrap; width: 100%; justify-content: center; padding-bottom: 4px; }
-        .sys-main { max-width: 72rem; margin: 0 auto; padding: 2rem 1rem; box-sizing: border-box; }
-        
-        /* 燈箱 (Modal) 備援 - 極度重要，防止畫面卡死 */
-        .sys-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.6); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 1rem; box-sizing: border-box; }
-        .sys-modal-content { background-color: #ffffff; border-radius: 0.75rem; width: 100%; max-width: 42rem; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); border: 1px solid #e3d5d5; }
-        .sys-modal-sm { max-width: 24rem; }
-        .sys-modal-header { padding: 1rem 1.5rem; background-color: #f3ecec; border-bottom: 1px solid #e3d5d5; display: flex; justify-content: space-between; align-items: center; }
-        .sys-modal-body { padding: 1.5rem; overflow-y: auto; flex: 1; }
-        .sys-modal-footer { padding: 1rem 1.5rem; background-color: #f3ecec; border-top: 1px solid #e3d5d5; }
-        
-        /* 表單與卡片備援 */
-        .sys-card { background-color: #fff; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid #e3d5d5; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; box-sizing: border-box; }
-        .sys-input { width: 100%; padding: 0.75rem; border: 1px solid #e3d5d5; border-radius: 0.5rem; background-color: #fbf8f8; font-size: 16px; box-sizing: border-box; color: #5a4c4c; margin-top: 0.25rem; }
-        .sys-input:focus { outline: none; border-color: #c49a9a; box-shadow: 0 0 0 2px rgba(196,154,154,0.3); }
-        .sys-form-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
-        
-        /* 表格備援 */
-        .sys-table-wrapper { overflow-x: auto; background-color: #fff; border-radius: 0.75rem; border: 1px solid #e3d5d5; width: 100%; box-sizing: border-box; }
-        .sys-table { width: 100%; min-width: 800px; border-collapse: collapse; text-align: left; }
-        .sys-table th, .sys-table td { padding: 1rem; border-bottom: 1px solid #e3d5d5; font-size: 0.875rem; }
-        .sys-table th { background-color: #f3ecec; font-weight: 600; }
-        
-        /* 按鈕備援 */
-        .sys-btn { padding: 0.6rem 1.2rem; border-radius: 0.5rem; border: none; cursor: pointer; font-weight: bold; font-size: 0.875rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; box-sizing: border-box; transition: opacity 0.2s; text-decoration: none; }
-        .sys-btn-primary { background-color: #c49a9a; color: white; }
-        .sys-btn-danger { background-color: #ef4444; color: white; }
-        .sys-btn-success { background-color: #16a34a; color: white; }
-        .sys-btn-info { background-color: #3b82f6; color: white; }
-        .sys-btn-secondary { background-color: #9ca3af; color: white; }
-        .sys-btn-outline { background-color: transparent; border: 1px solid #c49a9a; color: #c49a9a; }
-        .sys-btn-block { width: 100%; margin-top: 0.5rem; }
-        
-        /* 浮動通知 Toast 備援 */
-        .sys-toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background-color: #5a4c4c; color: white; padding: 1rem 1.5rem; border-radius: 0.75rem; z-index: 9999; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
-        
-        @media (min-width: 768px) {
-            .sys-header-inner { flex-direction: row; }
-            .sys-nav { width: auto; justify-content: flex-start; }
-            .sys-form-grid { grid-template-columns: 1fr 1fr; }
+        /* --- 防爆圖示核心 (解決 Safari SVG 放大的致命問題) --- */
+        svg { flex-shrink: 0; max-width: 100%; height: auto; }
+        svg.w-3 { width: 0.75rem !important; height: 0.75rem !important; }
+        svg.w-4 { width: 1rem !important; height: 1rem !important; }
+        svg.w-5 { width: 1.25rem !important; height: 1.25rem !important; }
+        svg.w-6 { width: 1.5rem !important; height: 1.5rem !important; }
+        svg.w-8 { width: 2rem !important; height: 2rem !important; }
+        svg.h-20 { height: 5rem !important; }
+
+        /* --- 手機端導覽列與表格流暢滑動 --- */
+        .hide-scroll {
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none; /* Firefox */
         }
+        .hide-scroll::-webkit-scrollbar {
+            display: none; /* Chrome/Safari */
+        }
+        .touch-action-manipulation {
+            touch-action: manipulation; /* 提升手機點擊反應速度 */
+        }
+
+        /* 若 Tailwind 完全失效時的底層顏色備援 */
+        .bg-morandi-bg { background-color: #fbf8f8; }
+        .text-morandi-text { color: #5a4c4c; }
+        .bg-morandi-primary { background-color: #c49a9a; }
     </style>
     
     <script>
@@ -164,21 +129,16 @@
 
         document.addEventListener('alpine:init', () => {
             Alpine.data('megaSignoffSystem', () => ({
-                // 雲端就緒狀態
                 isDbReady: false,
-
-                // 系統狀態
                 currentUser: null, 
                 view: 'dashboard', 
                 
-                // 登入與密碼
                 loginForm: { username: '', password: '' },
                 showLoginPwd: false,
                 changePwdModal: { show: false, oldPwd: '', newPwd: '', confirmPwd: '', force: false },
                 editingPwdFor: null,
                 newPwdInput: '',
 
-                // 預設資料庫 (雲端會覆蓋此資料)
                 accounts: [
                     { username: 'admin', password: 'admin', role: 'admin', name: '總管理者', branch: 'All' },
                     { username: 'HQ01', password: '888', role: 'hq', name: '營運總部', branch: '營運總部' },
@@ -197,10 +157,8 @@
                 categoryOptions: ['人事薪酬', '專案業務', '制度辦法', '採購需求', '資訊系統', '例外核准', '行銷活動'],
                 titleOptions: ['店經理', '店副理', '護理長', '行政主任', '行政櫃台', '諮詢主任', '護理諮詢主任', '諮詢師', '醫美師', '護理師', '其他'],
                 
-                newCategoryInput: '',
-                newTitleInput: '',
-                draggedIndex: null,
-                draggedList: null,
+                newCategoryInput: '', newTitleInput: '',
+                draggedIndex: null, draggedList: null,
 
                 filters: { month: new Date().toISOString().substring(0, 7), status: 'all', branch: 'all', category: 'all' },
                 settingTab: 'accounts',
@@ -209,9 +167,8 @@
                 
                 actionModal: { show: false, item: null },
                 imageModal: { show: false, url: '' },
-
-                pendingDeepLinkId: null, // 用於儲存開啟的連結ID
-                editingId: null, // 重新編輯狀態追蹤
+                pendingDeepLinkId: null,
+                editingId: null,
 
                 form: {
                     date: new Date().toISOString().split('T')[0],
@@ -220,17 +177,15 @@
                     generalDesc: '', images: []
                 },
                 
-                approvals: [], // 正式環境初始為空，將透過雲端同步
+                approvals: [],
 
                 init() {
-                    // 解析網址上的目標單號
                     let id = new URLSearchParams(window.location.search).get('id');
                     if (!id && window.location.hash.includes('id=')) {
                         id = new URLSearchParams(window.location.hash.substring(window.location.hash.indexOf('?'))).get('id');
                     }
                     this.pendingDeepLinkId = id;
 
-                    // 啟動 Firebase
                     const checkModule = setInterval(() => {
                         if (window.initMegaiaDB) {
                             clearInterval(checkModule);
@@ -253,11 +208,9 @@
                     });
                 },
 
-                // --- 資料庫修改函式 ---
                 addCategory() {
                     if(this.newCategoryInput && !this.categoryOptions.includes(this.newCategoryInput)) {
-                        this.categoryOptions.push(this.newCategoryInput);
-                        this.newCategoryInput = '';
+                        this.categoryOptions.push(this.newCategoryInput); this.newCategoryInput = '';
                         if(this.saveConfigToDB) this.saveConfigToDB();
                         this.showToast('✅ 成功新增簽呈類別');
                     }
@@ -269,8 +222,7 @@
                 },
                 addTitle() {
                     if(this.newTitleInput && !this.titleOptions.includes(this.newTitleInput)) {
-                        this.titleOptions.push(this.newTitleInput);
-                        this.newTitleInput = '';
+                        this.titleOptions.push(this.newTitleInput); this.newTitleInput = '';
                         if(this.saveConfigToDB) this.saveConfigToDB();
                         this.showToast('✅ 成功新增對象職稱');
                     }
@@ -281,34 +233,25 @@
                     this.showToast('🗑️ 已刪除職稱');
                 },
 
-                // --- 拖曳排序功能 ---
                 dragStart(index, listName, event) {
-                    this.draggedIndex = index;
-                    this.draggedList = listName;
+                    this.draggedIndex = index; this.draggedList = listName;
                     event.dataTransfer.effectAllowed = 'move';
                     setTimeout(() => event.target.classList.add('dragging'), 0);
                 },
                 dragEnter(index, listName, event) {
                     if (this.draggedList !== listName || this.draggedIndex === index) return;
-                    const list = this[listName];
-                    const item = list[this.draggedIndex];
-                    list.splice(this.draggedIndex, 1);
-                    list.splice(index, 0, item);
+                    const list = this[listName]; const item = list[this.draggedIndex];
+                    list.splice(this.draggedIndex, 1); list.splice(index, 0, item);
                     this.draggedIndex = index;
                 },
                 dragEnd(event) {
-                    this.draggedIndex = null;
-                    this.draggedList = null;
+                    this.draggedIndex = null; this.draggedList = null;
                     event.target.classList.remove('dragging');
-                    if(this.saveConfigToDB) this.saveConfigToDB(); // 拖曳結束後同步至雲端
+                    if(this.saveConfigToDB) this.saveConfigToDB();
                 },
 
-                // --- 核心操作功能 ---
                 login() {
-                    if(!this.isDbReady) {
-                        this.showToast('⏳ 系統連線中，請稍候...');
-                        return;
-                    }
+                    if(!this.isDbReady) return this.showToast('⏳ 系統連線中，請稍候...');
                     const user = this.accounts.find(a => a.username.toLowerCase() === this.loginForm.username.trim().toLowerCase() && a.password === this.loginForm.password);
                     if (user) {
                         this.currentUser = user;
@@ -323,9 +266,7 @@
                             this.checkDeepLink();
                             this.view = 'dashboard';
                         }
-                    } else {
-                        this.showToast('❌ 帳號或密碼錯誤，請重新輸入！');
-                    }
+                    } else this.showToast('❌ 帳號或密碼錯誤，請重新輸入！');
                 },
 
                 checkDeepLink() {
@@ -334,11 +275,8 @@
                         if (targetApp) {
                             if (this.currentUser.role !== 'branch' || targetApp.branch === this.currentUser.branch) {
                                 this.openActionModal(targetApp);
-                            } else {
-                                this.showToast('⚠️ 您無權限檢視此指定簽核單。');
-                            }
+                            } else this.showToast('⚠️ 您無權限檢視此指定簽核單。');
                         }
-                        // 清除網址參數，確保不重複觸發
                         this.pendingDeepLinkId = null;
                         const url = new URL(window.location);
                         url.searchParams.delete('id');
@@ -348,10 +286,8 @@
                 },
 
                 logout() {
-                    this.currentUser = null;
-                    this.loginForm.password = '';
-                    this.view = 'dashboard';
-                    this.resetForm();
+                    this.currentUser = null; this.loginForm.password = '';
+                    this.view = 'dashboard'; this.resetForm();
                     this.showToast('ℹ️ 已成功登出。');
                 },
 
@@ -366,33 +302,28 @@
                     this.currentUser.password = this.changePwdModal.newPwd;
                     const acc = this.accounts.find(a => a.username === this.currentUser.username);
                     if (acc) acc.password = this.changePwdModal.newPwd;
-                    
                     if(this.saveAccountsToDB) this.saveAccountsToDB();
 
                     const wasForced = this.changePwdModal.force;
                     this.changePwdModal.show = false;
                     
-                    if (wasForced) {
-                        this.showToast('✅ 密碼修改成功！歡迎進入系統。');
-                        this.checkDeepLink();
-                    } else this.showToast('✅ 密碼修改成功！下次請使用新密碼登入。');
+                    if (wasForced) { this.showToast('✅ 密碼修改成功！歡迎進入系統。'); this.checkDeepLink(); } 
+                    else this.showToast('✅ 密碼修改成功！下次請使用新密碼登入。');
                 },
 
                 clearFilters() {
                     this.filters = { month: new Date().toISOString().substring(0, 7), status: 'all', branch: 'all', category: 'all' };
-                    this.showToast('ℹ️ 已清除篩選條件並回到當月');
+                    this.showToast('ℹ️ 已清除篩選條件');
                 },
 
                 showToast(msg) {
-                    this.toast.message = msg;
-                    this.toast.show = true;
+                    this.toast.message = msg; this.toast.show = true;
                     if (this.toastTimeout) clearTimeout(this.toastTimeout);
                     this.toastTimeout = setTimeout(() => { this.toast.show = false; }, 3000);
                 },
 
                 savePassword(username) {
-                    if (!this.newPwdInput.trim()) return this.showToast('⚠️ 密碼不可為空白！');
-                    if (this.newPwdInput.length < 4) return this.showToast('❌ 密碼長度至少需要 4 碼！');
+                    if (!this.newPwdInput.trim() || this.newPwdInput.length < 4) return this.showToast('❌ 密碼長度至少需要 4 碼！');
                     const acc = this.accounts.find(a => a.username === username);
                     if (acc) {
                         acc.password = this.newPwdInput;
@@ -407,7 +338,7 @@
                     if (acc) {
                         acc.password = '888';
                         if(this.saveAccountsToDB) this.saveAccountsToDB();
-                        this.showToast(`✅ 已將 ${acc.name} 的密碼強制重置為 888！`);
+                        this.showToast(`✅ 已將 ${acc.name} 強制重置為 888！`);
                     }
                 },
 
@@ -422,7 +353,7 @@
                     todaySignoffs.forEach(a => {
                         const seqStr = a.id.slice(baseId.length);
                         const seq = parseInt(seqStr, 10);
-                        if (!isNaN(seq) && seq > maxSeq) { maxSeq = seq; }
+                        if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
                     });
                     const nextSeq = (maxSeq + 1).toString().padStart(2, '0');
                     return `${baseId}${nextSeq}`;
@@ -431,25 +362,21 @@
                 resetForm() {
                     this.editingId = null;
                     this.form.date = new Date().toISOString().split('T')[0];
-                    this.form.subject = '';
+                    this.form.subject = ''; this.form.category = ''; this.form.generalDesc = '';
                     this.form.special = { name: '', title: '', amount: '', desc: '' };
-                    this.form.generalDesc = '';
-                    this.form.category = '';
                     this.form.images = [];
                 },
 
                 exportExcel() {
                     const exportList = this.filteredApprovals.filter(a => ['人事薪酬', '專案業務'].includes(a.category));
-                    if (exportList.length === 0) return this.showToast('⚠️ 當前篩選條件下，無「人事薪酬/專案業務」等獎金資料可供匯出。');
+                    if (exportList.length === 0) return this.showToast('⚠️ 篩選條件下無獎金資料可匯出。');
 
-                    const excelData = [];
-                    excelData.push(["單號", "申請日期", "申請分院", "申請人", "簽呈類別", "主旨", "對象姓名", "對象職稱", "發放金額", "詳細說明", "目前狀態"]);
-
+                    const excelData = [["單號", "申請日期", "申請分院", "申請人", "簽呈類別", "主旨", "對象姓名", "對象職稱", "發放金額", "詳細說明", "目前狀態"]];
                     exportList.forEach(item => {
                         excelData.push([
-                            item.id, item.date, item.branch, item.applicant, item.category,
-                            item.subject || '', item.special?.name || '', item.special?.title || '',
-                            Number(item.special?.amount) || 0, item.special?.desc || '', item.status
+                            item.id, item.date, item.branch, item.applicant, item.category, item.subject || '',
+                            item.special?.name || '', item.special?.title || '', Number(item.special?.amount) || 0,
+                            item.special?.desc || '', item.status
                         ]);
                     });
 
@@ -458,7 +385,7 @@
                     const wb = XLSX.utils.book_new();
                     XLSX.utils.book_append_sheet(wb, ws, "獎金明細");
                     XLSX.writeFile(wb, `獎金撥款明細表_${this.filters.month}.xlsx`);
-                    this.showToast(`📊 成功！已下載 ${exportList.length} 筆獎金明細 (Excel xlsx 格式)。`);
+                    this.showToast(`📊 已下載 ${exportList.length} 筆獎金明細。`);
                 },
 
                 copyToNewForm(item) {
@@ -481,8 +408,7 @@
                         applicant: item.applicant, branch: item.branch, category: item.category, subject: item.subject,
                         special: JSON.parse(JSON.stringify(item.special)), generalDesc: item.generalDesc, images: JSON.parse(JSON.stringify(item.images))
                     };
-                    this.actionModal.show = false;
-                    this.view = 'newForm';
+                    this.actionModal.show = false; this.view = 'newForm';
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 },
 
@@ -509,14 +435,12 @@
                             images: JSON.parse(JSON.stringify(this.form.images)),
                             history: [{ time: nowStr, user: `${this.currentUser.name} (${this.form.applicant})`, action: '發起簽核' }]
                         };
-                        // 因使用即時同步，此處也手動推入確保介面立刻反應
                         this.approvals.unshift(newApproval); 
                         if(this.saveApprovalToDB) this.saveApprovalToDB(newApproval);
                         this.showToast('✅ 簽核單成功送出！');
                     }
                     this.filters.month = this.form.date.substring(0, 7); 
-                    this.resetForm();
-                    this.view = 'dashboard';
+                    this.resetForm(); this.view = 'dashboard';
                 },
 
                 processApproval(action) {
@@ -527,9 +451,9 @@
                     item.history.push({ time: nowStr, user: this.currentUser.name, action: actionName });
 
                     if (action === 'approve') { item.status = '已簽核'; this.showToast(`✅ 單號 #${item.id} 已決行通過！`); } 
-                    else if (action === 'escalate_vp') { item.currentLevel = 'vp'; this.showToast(`⬆️ 單號 #${item.id} 已加簽至營運副總。`); } 
-                    else if (action === 'escalate_ceo') { item.currentLevel = 'ceo'; this.showToast(`⬆️ 單號 #${item.id} 已加簽至執行長。`); } 
-                    else if (action === 'reject') { item.status = '退回'; item.currentLevel = 'done'; this.showToast(`❌ 單號 #${item.id} 已遭退回！`); }
+                    else if (action === 'escalate_vp') { item.currentLevel = 'vp'; this.showToast(`⬆️ 單號 #${item.id} 已加簽。`); } 
+                    else if (action === 'escalate_ceo') { item.currentLevel = 'ceo'; this.showToast(`⬆️ 單號 #${item.id} 已加簽。`); } 
+                    else if (action === 'reject') { item.status = '退回'; item.currentLevel = 'done'; this.showToast(`❌ 單號 #${item.id} 已退回！`); }
                     
                     if(this.saveApprovalToDB) this.saveApprovalToDB(item);
                     this.actionModal.show = false;
@@ -540,7 +464,7 @@
                     item.status = '送簽中'; item.currentLevel = 'manager'; 
                     item.history.push({ time: nowStr, user: this.currentUser.name, action: '管理員撤銷決行 (恢復送簽中)' });
                     if(this.saveApprovalToDB) this.saveApprovalToDB(item);
-                    this.showToast('⏪ 已成功撤銷該單據，恢復為「送簽中」狀態。');
+                    this.showToast('⏪ 已撤銷單據，恢復為「送簽中」。');
                 },
 
                 deleteApproval(id) {
@@ -568,7 +492,7 @@
                 copyLink(id) {
                     const linkUrl = `${window.location.origin}${window.location.pathname}?id=${id}`;
                     if (navigator.clipboard && window.isSecureContext) {
-                        navigator.clipboard.writeText(linkUrl).then(() => { this.showToast(`🔗 已複製單號 #${id} 的專屬連結！`); })
+                        navigator.clipboard.writeText(linkUrl).then(() => { this.showToast(`🔗 已複製單號 #${id} 連結！`); })
                         .catch(() => this.fallbackCopyTextToClipboard(linkUrl, id));
                     } else this.fallbackCopyTextToClipboard(linkUrl, id);
                 },
@@ -578,7 +502,7 @@
                     textArea.style.top = "0"; textArea.style.left = "0"; textArea.style.position = "fixed"; 
                     document.body.appendChild(textArea);
                     textArea.focus(); textArea.select();
-                    try { document.execCommand('copy'); this.showToast(`🔗 已複製單號 #${id} 的專屬連結！`); } 
+                    try { document.execCommand('copy'); this.showToast(`🔗 已複製單號 #${id} 連結！`); } 
                     catch (err) { this.showToast('⚠️ 複製失敗，請手動複製'); }
                     document.body.removeChild(textArea);
                 },
@@ -586,37 +510,36 @@
             }));
         });
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body class="bg-morandi-bg text-morandi-text font-sans antialiased min-h-screen" x-data="megaSignoffSystem">
 
     <!-- 未登入畫面 (Login) -->
-    <div x-show="!currentUser" class="login-wrapper min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-morandi-bg to-morandi-surface" x-transition>
-        <div class="login-card bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-morandi-border text-center">
+    <div x-show="!currentUser" class="min-h-screen flex items-center justify-center p-4 sm:p-8 bg-gradient-to-br from-morandi-bg to-morandi-surface" x-transition>
+        <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-md border border-morandi-border text-center">
             
-            <div class="mb-6 flex justify-center">
-                <img src="logo.png" alt="美加醫美 MEGAIA" class="login-logo h-20 object-contain mx-auto"
-                     onerror="this.onerror=null; this.outerHTML='<div class=\'flex flex-col items-center\'><div class=\'text-3xl font-bold text-[#d43f4a] tracking-widest mb-1\'>美加醫美</div><div class=\'text-sm text-[#d43f4a] tracking-[0.2em] font-serif\'>MEGAIA</div></div>';">
+            <div class="mb-4 sm:mb-6 flex justify-center">
+                <img src="logo.png" alt="美加醫美 MEGAIA" class="h-16 sm:h-20 object-contain mx-auto"
+                     onerror="this.onerror=null; this.outerHTML='<div class=\'flex flex-col items-center\'><div class=\'text-2xl sm:text-3xl font-bold text-[#d43f4a] tracking-widest mb-1\'>美加醫美</div><div class=\'text-xs sm:text-sm text-[#d43f4a] tracking-[0.2em] font-serif\'>MEGAIA</div></div>';">
             </div>
-            <h1 class="login-title text-xl font-bold mb-2 text-morandi-text">營運現場簽核系統</h1>
-            <p class="login-subtitle text-sm text-morandi-text/60 mb-8">請輸入您的專屬帳號密碼登入</p>
+            <h1 class="text-lg sm:text-xl font-bold mb-2 text-morandi-text">營運現場簽核系統</h1>
+            <p class="text-xs sm:text-sm text-morandi-text/60 mb-6 sm:mb-8">請輸入您的專屬帳號密碼登入</p>
             
-            <form @submit.prevent="login" class="login-form space-y-5 text-left">
+            <form @submit.prevent="login" class="space-y-4 sm:space-y-5 text-left">
                 <div>
-                    <label class="block text-sm font-medium mb-1 pl-1">帳號 Username</label>
-                    <input type="text" x-model="loginForm.username" required class="sys-input login-input w-full border border-morandi-border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg placeholder-morandi-text/30" placeholder="例如: admin / M001 / HQ01" :disabled="!isDbReady">
+                    <label class="block text-xs sm:text-sm font-medium mb-1 pl-1">帳號 Username</label>
+                    <input type="text" x-model="loginForm.username" required class="w-full border border-morandi-border rounded-lg p-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg placeholder-morandi-text/40" placeholder="例如: admin / M001 / HQ01" :disabled="!isDbReady">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium mb-1 pl-1">密碼 Password</label>
-                    <div class="relative" style="position: relative;">
-                        <input :type="showLoginPwd ? 'text' : 'password'" x-model="loginForm.password" required class="sys-input login-input w-full border border-morandi-border rounded-lg p-3 pr-10 focus:outline-none focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg placeholder-morandi-text/30" placeholder="預設請輸入 888" :disabled="!isDbReady" style="margin-bottom: 0;">
-                        <button type="button" @click="showLoginPwd = !showLoginPwd" class="pwd-toggle absolute inset-y-0 right-0 flex items-center pr-3 text-morandi-text/40 hover:text-morandi-primary transition-colors focus:outline-none" :disabled="!isDbReady">
+                    <label class="block text-xs sm:text-sm font-medium mb-1 pl-1">密碼 Password</label>
+                    <div class="relative">
+                        <input :type="showLoginPwd ? 'text' : 'password'" x-model="loginForm.password" required class="w-full border border-morandi-border rounded-lg p-3 pr-10 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg placeholder-morandi-text/40" placeholder="預設請輸入 888" :disabled="!isDbReady">
+                        <button type="button" @click="showLoginPwd = !showLoginPwd" class="absolute inset-y-0 right-0 flex items-center pr-3 text-morandi-text/40 hover:text-morandi-primary transition-colors focus:outline-none touch-action-manipulation" :disabled="!isDbReady">
                             <svg x-show="!showLoginPwd" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
                             <svg x-show="showLoginPwd" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" x-cloak><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
                         </button>
                     </div>
                 </div>
-                <button type="submit" class="sys-btn sys-btn-primary sys-btn-block login-btn w-full text-white font-bold rounded-lg p-3 transition-colors shadow-md mt-4 flex justify-center items-center gap-2" :class="isDbReady ? 'bg-morandi-primary hover:bg-morandi-hover' : 'bg-gray-400 cursor-not-allowed'" :disabled="!isDbReady">
+                <button type="submit" class="w-full text-white font-bold rounded-lg p-3 transition-colors shadow-md mt-4 sm:mt-6 flex justify-center items-center gap-2 touch-action-manipulation" :class="isDbReady ? 'bg-morandi-primary hover:bg-morandi-hover' : 'bg-gray-400 cursor-not-allowed'" :disabled="!isDbReady">
                     <svg x-show="!isDbReady" class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                     <span x-text="isDbReady ? '登入系統' : '系統連線準備中...'"></span>
                 </button>
@@ -625,171 +548,181 @@
     </div>
 
     <!-- 系統主畫面 (已登入) -->
-    <div x-show="currentUser" x-cloak>
-        <header class="sys-header bg-morandi-surface shadow-sm border-b border-morandi-border sticky top-0 z-20">
-            <div class="sys-header-inner max-w-6xl mx-auto px-4 py-3 flex flex-col md:flex-row justify-between items-center gap-4">
-                <div class="flex items-center gap-3">
-                    <img src="logo.png" alt="美加醫美" class="h-8 object-contain"
-                         onerror="this.onerror=null; this.outerHTML='<div class=\'flex items-end gap-1 text-[#d43f4a]\'><span class=\'font-bold text-xl tracking-widest\'>美加醫美</span><span class=\'hidden sm:inline text-[10px] font-serif leading-4\'>MEGAIA</span></div>';">
-                    <div class="h-5 w-px border-l border-morandi-border hidden sm:block"></div>
-                    <h1 class="text-lg font-bold tracking-wide text-morandi-text">
+    <div x-show="currentUser" class="flex flex-col min-h-screen" x-cloak>
+        <!-- 頂部導覽列 (Mobile 最佳化) -->
+        <header class="bg-morandi-surface shadow-sm border-b border-morandi-border sticky top-0 z-20">
+            <div class="max-w-6xl mx-auto px-4 py-2 sm:py-3 flex flex-wrap justify-between items-center gap-y-2 sm:gap-y-4">
+                
+                <!-- Logo 區 -->
+                <div class="flex items-center gap-2 sm:gap-3">
+                    <img src="logo.png" alt="美加醫美" class="h-6 sm:h-8 object-contain"
+                         onerror="this.onerror=null; this.outerHTML='<div class=\'flex items-end gap-1 text-[#d43f4a]\'><span class=\'font-bold text-lg sm:text-xl tracking-widest\'>美加醫美</span></div>';">
+                    <div class="h-4 w-px border-l border-morandi-border hidden sm:block"></div>
+                    <h1 class="text-sm sm:text-lg font-bold tracking-wide text-morandi-text hidden sm:block">
                         營運現場簽核系統
                     </h1>
                 </div>
-                
-                <nav class="sys-nav flex space-x-2 sm:space-x-6 overflow-x-auto w-full md:w-auto justify-center">
-                    <button @click="view = 'dashboard'" :class="view === 'dashboard' ? 'text-morandi-primary border-morandi-primary active' : 'text-morandi-text opacity-70 border-transparent hover:opacity-100'" class="pb-1 font-medium border-b-2 transition-all whitespace-nowrap px-2">簽核列表</button>
-                    <button @click="view = 'newForm'; resetForm();" :class="view === 'newForm' ? 'text-morandi-primary border-morandi-primary active' : 'text-morandi-text opacity-70 border-transparent hover:opacity-100'" class="pb-1 font-medium border-b-2 transition-all whitespace-nowrap px-2">建立簽核單</button>
-                    <!-- 僅限 admin 可見 -->
-                    <button x-show="currentUser && currentUser.role === 'admin'" @click="view = 'settings'; settingTab = 'accounts';" :class="view === 'settings' ? 'text-morandi-primary border-morandi-primary active' : 'text-morandi-text opacity-70 border-transparent hover:opacity-100'" class="pb-1 font-medium border-b-2 transition-all whitespace-nowrap px-2">系統資料庫維護</button>
-                </nav>
 
-                <div class="flex items-center gap-3 text-sm font-medium justify-center">
-                    <div class="px-3 py-1 bg-white rounded-full border border-morandi-border text-morandi-primary flex items-center gap-1.5 shadow-sm">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-                        <span x-text="currentUser?.name"></span>
+                <!-- 使用者操作區 (右側) -->
+                <div class="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm font-medium">
+                    <div class="px-2 sm:px-3 py-1 bg-white rounded-full border border-morandi-border text-morandi-primary flex items-center gap-1 shadow-sm">
+                        <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                        <span x-text="currentUser?.name" class="truncate max-w-[80px] sm:max-w-none"></span>
                     </div>
-                    <!-- 變更密碼 -->
-                    <button @click="openChangePwdModal()" class="text-morandi-text/60 hover:text-morandi-primary transition-colors bg-white border border-morandi-border rounded-full p-1.5 shadow-sm" title="修改密碼">
+                    <button @click="openChangePwdModal()" class="text-morandi-text/60 hover:text-morandi-primary transition-colors bg-white border border-morandi-border rounded-full p-1 sm:p-1.5 shadow-sm touch-action-manipulation" title="修改密碼">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                     </button>
-                    <!-- 登出 -->
-                    <button @click="logout" class="text-morandi-text/60 hover:text-red-500 transition-colors bg-white border border-morandi-border rounded-full p-1.5 shadow-sm" title="登出系統">
+                    <button @click="logout" class="text-morandi-text/60 hover:text-red-500 transition-colors bg-white border border-morandi-border rounded-full p-1 sm:p-1.5 shadow-sm touch-action-manipulation" title="登出系統">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
                     </button>
                 </div>
+
+                <!-- 分頁導覽 (Mobile 獨立一排可滑動) -->
+                <nav class="w-full md:w-auto flex space-x-2 sm:space-x-6 overflow-x-auto hide-scroll pt-1 sm:pt-0 justify-start sm:justify-center order-last md:order-none border-t border-morandi-border sm:border-none">
+                    <button @click="view = 'dashboard'" :class="view === 'dashboard' ? 'text-morandi-primary border-morandi-primary' : 'text-morandi-text opacity-70 border-transparent hover:opacity-100'" class="pb-1 text-sm sm:text-base font-medium border-b-2 transition-all whitespace-nowrap px-1 sm:px-2 touch-action-manipulation">簽核列表</button>
+                    <button @click="view = 'newForm'; resetForm();" :class="view === 'newForm' ? 'text-morandi-primary border-morandi-primary' : 'text-morandi-text opacity-70 border-transparent hover:opacity-100'" class="pb-1 text-sm sm:text-base font-medium border-b-2 transition-all whitespace-nowrap px-1 sm:px-2 touch-action-manipulation">建立簽核單</button>
+                    <button x-show="currentUser && currentUser.role === 'admin'" @click="view = 'settings'; settingTab = 'accounts';" :class="view === 'settings' ? 'text-morandi-primary border-morandi-primary' : 'text-morandi-text opacity-70 border-transparent hover:opacity-100'" class="pb-1 text-sm sm:text-base font-medium border-b-2 transition-all whitespace-nowrap px-1 sm:px-2 touch-action-manipulation">系統資料庫維護</button>
+                </nav>
             </div>
         </header>
 
-        <main class="sys-main max-w-6xl mx-auto px-4 py-8 relative">
+        <main class="flex-1 max-w-6xl w-full mx-auto p-4 sm:py-8 relative">
             
             <!-- 視圖 1：簽核列表 (Dashboard) -->
             <div x-show="view === 'dashboard'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-cloak>
-                <div class="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-6 gap-4">
-                    <div>
-                        <h2 class="text-2xl font-bold mb-3">簽核列表總覽</h2>
-                        <!-- 篩選列 -->
-                        <div class="sys-flex-row flex flex-wrap items-center gap-2">
-                            <div class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-morandi-border shadow-sm">
-                                <span class="text-xs font-bold text-morandi-text/60">月份</span>
-                                <input type="month" x-model="filters.month" class="sys-input bg-transparent text-sm font-medium focus:outline-none text-morandi-text" style="padding: 0.2rem; border: none; margin: 0;">
-                            </div>
-                            <div class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-morandi-border shadow-sm">
-                                <span class="text-xs font-bold text-morandi-text/60">狀態</span>
-                                <select x-model="filters.status" class="sys-select bg-transparent text-sm font-medium focus:outline-none text-morandi-text pr-2" style="padding: 0.2rem; border: none; margin: 0;">
-                                    <option value="all">所有狀態</option>
-                                    <option value="送簽中">送簽中</option>
-                                    <option value="已簽核">已簽核</option>
-                                    <option value="退回">退回</option>
-                                </select>
-                            </div>
-                            <div class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-morandi-border shadow-sm">
-                                <span class="text-xs font-bold text-morandi-text/60">簽呈類別</span>
-                                <select x-model="filters.category" class="sys-select bg-transparent text-sm font-medium focus:outline-none text-morandi-text pr-2" style="padding: 0.2rem; border: none; margin: 0;">
-                                    <option value="all">所有類別</option>
-                                    <template x-for="c in categoryOptions"><option :value="c" x-text="c"></option></template>
-                                </select>
-                            </div>
-                            <div x-show="currentUser && currentUser.role !== 'branch'" class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-morandi-border shadow-sm">
-                                <span class="text-xs font-bold text-morandi-text/60">分院別</span>
-                                <select x-model="filters.branch" class="sys-select bg-transparent text-sm font-medium focus:outline-none text-morandi-text pr-2" style="padding: 0.2rem; border: none; margin: 0;">
-                                    <option value="all">全部分院</option>
-                                    <template x-for="b in branchOptions"><option :value="b" x-text="b"></option></template>
-                                </select>
-                            </div>
+                
+                <!-- 控制列 (手機端改用 Grid 佈局防跑版) -->
+                <div class="mb-4 sm:mb-6">
+                    <h2 class="text-xl sm:text-2xl font-bold mb-3">簽核列表總覽</h2>
+                    
+                    <div class="grid grid-cols-2 lg:flex lg:flex-wrap items-center gap-2">
+                        <!-- 月份篩選 -->
+                        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 bg-white px-2 py-1.5 sm:px-3 sm:py-1.5 rounded-lg border border-morandi-border shadow-sm col-span-1">
+                            <span class="text-[10px] sm:text-xs font-bold text-morandi-text/60">月份</span>
+                            <input type="month" x-model="filters.month" class="bg-transparent text-xs sm:text-sm font-medium focus:outline-none text-morandi-text w-full">
+                        </div>
+                        
+                        <!-- 狀態篩選 -->
+                        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 bg-white px-2 py-1.5 sm:px-3 sm:py-1.5 rounded-lg border border-morandi-border shadow-sm col-span-1">
+                            <span class="text-[10px] sm:text-xs font-bold text-morandi-text/60">狀態</span>
+                            <select x-model="filters.status" class="bg-transparent text-xs sm:text-sm font-medium focus:outline-none text-morandi-text w-full">
+                                <option value="all">所有狀態</option>
+                                <option value="送簽中">送簽中</option>
+                                <option value="已簽核">已簽核</option>
+                                <option value="退回">退回</option>
+                            </select>
+                        </div>
+                        
+                        <!-- 類別篩選 -->
+                        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 bg-white px-2 py-1.5 sm:px-3 sm:py-1.5 rounded-lg border border-morandi-border shadow-sm col-span-1">
+                            <span class="text-[10px] sm:text-xs font-bold text-morandi-text/60">類別</span>
+                            <select x-model="filters.category" class="bg-transparent text-xs sm:text-sm font-medium focus:outline-none text-morandi-text w-full">
+                                <option value="all">所有類別</option>
+                                <template x-for="c in categoryOptions"><option :value="c" x-text="c"></option></template>
+                            </select>
+                        </div>
+                        
+                        <!-- 分院篩選 (管理權限可見) -->
+                        <div x-show="currentUser && currentUser.role !== 'branch'" class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 bg-white px-2 py-1.5 sm:px-3 sm:py-1.5 rounded-lg border border-morandi-border shadow-sm col-span-1">
+                            <span class="text-[10px] sm:text-xs font-bold text-morandi-text/60">分院</span>
+                            <select x-model="filters.branch" class="bg-transparent text-xs sm:text-sm font-medium focus:outline-none text-morandi-text w-full">
+                                <option value="all">全部分院</option>
+                                <template x-for="b in branchOptions"><option :value="b" x-text="b"></option></template>
+                            </select>
+                        </div>
 
-                            <button @click="clearFilters()" class="sys-btn sys-btn-secondary flex items-center gap-1 text-sm bg-gray-100 border border-gray-200 text-morandi-text/60 hover:bg-morandi-surface hover:text-morandi-primary transition-colors ml-1 px-3 py-1.5 rounded-lg shadow-sm font-medium" style="background: #f3f4f6; color: #4b5563;">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        <!-- 按鈕列 (佔滿剩餘寬度) -->
+                        <div class="col-span-2 lg:col-auto flex gap-2 w-full lg:w-auto mt-1 lg:mt-0 lg:ml-auto">
+                            <button @click="clearFilters()" class="flex-1 lg:flex-none justify-center flex items-center gap-1 text-xs sm:text-sm bg-white border border-morandi-border text-morandi-text/60 hover:bg-morandi-bg transition-colors px-3 py-2 rounded-lg shadow-sm font-medium touch-action-manipulation">
+                                <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                                 清除篩選
+                            </button>
+                            <button x-show="currentUser?.role === 'admin'" @click="exportExcel()" class="flex-1 lg:flex-none justify-center bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg shadow-sm transition-colors text-xs sm:text-sm font-bold flex items-center gap-1 touch-action-manipulation">
+                                <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                匯出獎金(Excel)
                             </button>
                         </div>
                     </div>
-                    
-                    <!-- 匯出 Excel (xlsx) 財務獎金功能 - 僅限總管理者(admin)可見 -->
-                    <button x-show="currentUser?.role === 'admin'" @click="exportExcel()" class="sys-btn sys-btn-success bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg shadow-sm transition-colors text-sm font-bold flex items-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                        匯出獎金明細 (Excel)
-                    </button>
                 </div>
 
-                <div class="sys-table-wrapper bg-white rounded-xl shadow-sm border border-morandi-border overflow-hidden">
-                    <div class="overflow-x-auto">
-                        <table class="sys-table w-full text-left border-collapse min-w-[1000px]">
+                <!-- 資料表格區 (水平滑動保護) -->
+                <div class="bg-white rounded-xl shadow-sm border border-morandi-border overflow-hidden w-full">
+                    <div class="overflow-x-auto hide-scroll w-full">
+                        <table class="w-full text-left border-collapse min-w-[850px]">
                             <thead>
-                                <tr class="bg-morandi-surface text-sm border-b border-morandi-border text-morandi-text">
-                                    <th class="p-4 font-semibold">單號</th>
-                                    <th class="p-4 font-semibold">日期</th>
-                                    <th class="p-4 font-semibold">分院/申請人</th>
-                                    <th class="p-4 font-semibold">類別</th>
-                                    <th class="p-4 font-semibold w-1/4">主旨</th>
-                                    <th class="p-4 font-semibold text-center">狀態/進度</th>
-                                    <th class="p-4 font-semibold text-center">操作</th>
+                                <tr class="bg-morandi-surface text-xs sm:text-sm border-b border-morandi-border text-morandi-text whitespace-nowrap">
+                                    <th class="p-3 sm:p-4 font-semibold">單號</th>
+                                    <th class="p-3 sm:p-4 font-semibold">日期</th>
+                                    <th class="p-3 sm:p-4 font-semibold">分院/申請人</th>
+                                    <th class="p-3 sm:p-4 font-semibold">類別</th>
+                                    <th class="p-3 sm:p-4 font-semibold min-w-[150px]">主旨</th>
+                                    <th class="p-3 sm:p-4 font-semibold text-center">狀態/進度</th>
+                                    <th class="p-3 sm:p-4 font-semibold text-center">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <template x-for="item in filteredApprovals" :key="item.id">
-                                    <tr class="border-b border-morandi-border hover:bg-morandi-surface/30 transition-colors">
-                                        <td class="p-4 text-xs text-morandi-text/60 font-mono font-bold" x-text="item.id"></td>
-                                        <td class="p-4 text-sm" x-text="item.date"></td>
-                                        <td class="p-4 text-sm">
+                                    <tr class="border-b border-morandi-border hover:bg-morandi-bg transition-colors">
+                                        <td class="p-3 sm:p-4 text-xs text-morandi-text/60 font-mono font-bold" x-text="item.id"></td>
+                                        <td class="p-3 sm:p-4 text-xs sm:text-sm whitespace-nowrap" x-text="item.date"></td>
+                                        <td class="p-3 sm:p-4 text-xs sm:text-sm whitespace-nowrap">
                                             <div class="font-bold text-morandi-primary" x-text="item.branch"></div>
                                             <div class="text-xs text-morandi-text/60" x-text="item.applicant"></div>
                                         </td>
-                                        <td class="p-4 text-sm">
-                                            <span class="px-2.5 py-1 bg-morandi-bg border border-morandi-border rounded text-xs font-medium" x-text="item.category"></span>
+                                        <td class="p-3 sm:p-4 text-xs sm:text-sm whitespace-nowrap">
+                                            <span class="px-2 py-1 bg-white border border-morandi-border rounded text-[10px] sm:text-xs font-medium shadow-sm" x-text="item.category"></span>
                                         </td>
-                                        <td class="p-4 text-sm max-w-[200px]">
-                                            <div class="truncate font-medium" x-text="item.subject" :title="item.subject"></div>
+                                        <td class="p-3 sm:p-4 text-xs sm:text-sm">
+                                            <div class="truncate font-medium max-w-[150px] sm:max-w-[200px]" x-text="item.subject" :title="item.subject"></div>
                                             
-                                            <!-- 主管待簽核的高亮視覺提示 -->
-                                            <div x-show="item.status === '送簽中' && item.currentLevel === currentUser?.role" class="mt-1.5 flex items-center gap-1 text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded text-[10px] font-bold w-fit animate-pulse shadow-sm">
-                                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                                                需要您的簽核
+                                            <!-- 主管高亮提示 -->
+                                            <div x-show="item.status === '送簽中' && item.currentLevel === currentUser?.role" class="mt-1 flex items-center gap-1 text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded text-[10px] font-bold w-fit shadow-sm">
+                                                <svg class="w-3 h-3 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                                需您的簽核
                                             </div>
 
-                                            <div class="text-xs text-morandi-text/50 mt-1 flex items-center gap-1" x-show="item.images && item.images.length > 0">
+                                            <div class="text-[10px] sm:text-xs text-morandi-text/50 mt-1 flex items-center gap-1" x-show="item.images && item.images.length > 0">
                                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                                                附 <span x-text="item.images.length"></span> 張圖
+                                                附圖 <span x-text="item.images.length"></span>
                                             </div>
                                         </td>
-                                        <td class="p-4 text-sm text-center">
+                                        <td class="p-3 sm:p-4 text-xs sm:text-sm text-center">
                                             <div class="flex flex-col items-center gap-1">
-                                                <span class="px-3 py-1 rounded-full text-white text-xs font-medium shadow-sm inline-block min-w-[64px]" 
+                                                <span class="px-2 sm:px-3 py-1 rounded-full text-white text-[10px] sm:text-xs font-medium shadow-sm inline-block min-w-[56px] whitespace-nowrap" 
                                                     :class="{'bg-morandi-status_pending': item.status === '送簽中', 'bg-morandi-status_approved': item.status === '已簽核', 'bg-morandi-status_rejected': item.status === '退回'}" 
-                                                    x-text="item.status" style="padding: 0.25rem 0.5rem; border-radius: 9999px; color: white;">
+                                                    x-text="item.status">
                                                 </span>
-                                                <span class="text-[10px] text-morandi-text/60 mt-1" x-show="item.status === '送簽中'">
-                                                    目前關卡: <span class="font-bold" x-text="item.currentLevel === 'manager' ? '營運協理' : (item.currentLevel === 'vp' ? '營運副總' : '執行長')"></span>
+                                                <span class="text-[10px] text-morandi-text/60 mt-1 whitespace-nowrap" x-show="item.status === '送簽中'">
+                                                    關卡: <span class="font-bold" x-text="item.currentLevel === 'manager' ? '協理' : (item.currentLevel === 'vp' ? '副總' : '執行長')"></span>
                                                 </span>
                                             </div>
                                         </td>
-                                        <td class="p-4 text-sm text-center flex flex-col justify-center gap-2 items-center">
-                                            <div class="flex gap-2">
+                                        <td class="p-3 sm:p-4 text-center">
+                                            <div class="flex justify-center gap-1.5 sm:gap-2">
                                                 <!-- 對需要簽核的主管顯示強調按鈕 -->
-                                                <button x-show="item.status === '送簽中' && item.currentLevel === currentUser?.role" @click="openActionModal(item)" class="sys-btn sys-btn-danger text-white bg-red-500 hover:bg-red-600 px-3 py-1.5 rounded-lg text-xs transition-colors font-bold shadow-md animate-pulse">
-                                                    執行簽核
+                                                <button x-show="item.status === '送簽中' && item.currentLevel === currentUser?.role" @click="openActionModal(item)" class="text-white bg-red-500 hover:bg-red-600 px-2 sm:px-3 py-1.5 rounded-lg text-xs transition-colors font-bold shadow-md touch-action-manipulation whitespace-nowrap">
+                                                    簽核
                                                 </button>
                                                 <!-- 一般檢視按鈕 -->
-                                                <button x-show="!(item.status === '送簽中' && item.currentLevel === currentUser?.role)" @click="openActionModal(item)" class="sys-btn sys-btn-primary text-white bg-morandi-primary hover:bg-morandi-hover px-3 py-1.5 rounded-lg text-xs transition-colors font-bold shadow-sm">
-                                                    檢視內容
+                                                <button x-show="!(item.status === '送簽中' && item.currentLevel === currentUser?.role)" @click="openActionModal(item)" class="text-white bg-morandi-primary hover:bg-morandi-hover px-2 sm:px-3 py-1.5 rounded-lg text-xs transition-colors font-bold shadow-sm touch-action-manipulation whitespace-nowrap">
+                                                    檢視
                                                 </button>
-                                                <!-- 複製單據建立新單 (分院人員或Admin皆可快速複製) -->
-                                                <button x-show="currentUser?.role === 'admin' || currentUser?.role === 'branch'" @click="copyToNewForm(item)" class="sys-btn sys-btn-info text-white bg-blue-500 hover:bg-blue-600 px-2 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-center shadow-sm" title="複製此單建立新單">
-                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                                <!-- 複製單據按鈕 -->
+                                                <button x-show="currentUser?.role === 'admin' || currentUser?.role === 'branch'" @click="copyToNewForm(item)" class="text-white bg-blue-500 hover:bg-blue-600 px-2 py-1.5 rounded-lg text-xs transition-colors shadow-sm touch-action-manipulation" title="複製此單建立新單">
+                                                    <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                                                 </button>
-                                                <!-- 複製專屬連結按鈕 -->
-                                                <button @click="copyLink(item.id)" class="sys-btn sys-btn-outline text-morandi-primary hover:text-morandi-hover bg-morandi-surface border border-morandi-border px-2 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-center shadow-sm" title="複製專屬連結">
-                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                                                <!-- 複製連結按鈕 -->
+                                                <button @click="copyLink(item.id)" class="text-morandi-primary bg-morandi-surface border border-morandi-border hover:bg-morandi-border px-2 py-1.5 rounded-lg text-xs transition-colors shadow-sm touch-action-manipulation" title="複製連結">
+                                                    <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
                                                 </button>
                                             </div>
                                         </td>
                                     </tr>
                                 </template>
                                 <tr x-show="filteredApprovals.length === 0" x-cloak>
-                                    <td colspan="7" class="p-16 text-center text-morandi-text/50">
-                                        <svg class="w-16 h-16 mx-auto mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                        <p class="font-medium text-lg mb-1">查無符合條件之簽核紀錄</p>
-                                        <p class="text-sm">資料庫為全新狀態，請至「建立簽核單」發起第一張單據！</p>
+                                    <td colspan="7" class="p-10 sm:p-16 text-center text-morandi-text/50">
+                                        <svg class="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                        <p class="font-medium text-base sm:text-lg mb-1">查無符合條件之紀錄</p>
                                     </td>
                                 </tr>
                             </tbody>
@@ -800,138 +733,140 @@
 
             <!-- 視圖 2：建立/編輯簽核單 (New Form) -->
             <div x-show="view === 'newForm'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-cloak>
-                <div class="sys-card max-w-3xl mx-auto bg-white p-6 sm:p-10 rounded-xl shadow-sm border border-morandi-border">
-                    <h2 class="text-2xl font-bold mb-6 border-b border-morandi-border pb-4 flex items-center gap-2 text-morandi-text">
+                <div class="max-w-3xl mx-auto bg-white p-5 sm:p-8 rounded-xl shadow-sm border border-morandi-border w-full">
+                    <h2 class="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 border-b border-morandi-border pb-3 sm:pb-4 flex items-center gap-2 text-morandi-text">
                         <svg class="w-5 h-5 text-morandi-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                        <span x-text="editingId ? '編輯並重新送出簽核單' : '填寫簽核資訊'"></span>
+                        <span x-text="editingId ? '編輯並重新送出' : '填寫簽核單'"></span>
                     </h2>
                     
-                    <form @submit.prevent="submitForm" class="space-y-6">
-                        <div class="sys-form-grid grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <form @submit.prevent="submitForm" class="space-y-4 sm:space-y-6">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                             <div>
-                                <label class="block text-sm font-medium mb-1 text-morandi-text/80">申請日期</label>
-                                <input type="date" x-model="form.date" required class="sys-input w-full border border-morandi-border rounded-lg p-2.5 focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg" :disabled="editingId">
+                                <label class="block text-xs sm:text-sm font-medium mb-1 text-morandi-text/80">申請日期</label>
+                                <input type="date" x-model="form.date" required class="w-full border border-morandi-border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg" :disabled="editingId">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium mb-1 text-morandi-text/80">申請人姓名</label>
-                                <input type="text" x-model="form.applicant" required class="sys-input w-full border border-morandi-border rounded-lg p-2.5 focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg" placeholder="請輸入姓名">
+                                <label class="block text-xs sm:text-sm font-medium mb-1 text-morandi-text/80">申請人姓名</label>
+                                <input type="text" x-model="form.applicant" required class="w-full border border-morandi-border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg placeholder-morandi-text/40" placeholder="請輸入姓名">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium mb-1 text-morandi-text/80">申請分院</label>
-                                <select x-model="form.branch" required class="sys-input w-full border border-morandi-border rounded-lg p-2.5 focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg" :disabled="currentUser?.role === 'branch' || editingId">
+                                <label class="block text-xs sm:text-sm font-medium mb-1 text-morandi-text/80">申請分院</label>
+                                <select x-model="form.branch" required class="w-full border border-morandi-border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg" :disabled="currentUser?.role === 'branch' || editingId">
                                     <option value="" disabled>請選擇分院</option>
                                     <template x-for="b in branchOptions"><option :value="b" x-text="b"></option></template>
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium mb-1 text-morandi-text/80">簽呈類別</label>
-                                <select x-model="form.category" required class="sys-input w-full border border-morandi-border rounded-lg p-2.5 focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg">
+                                <label class="block text-xs sm:text-sm font-medium mb-1 text-morandi-text/80">簽呈類別</label>
+                                <select x-model="form.category" required class="w-full border border-morandi-border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg">
                                     <option value="" disabled selected>請選擇類別</option>
                                     <template x-for="c in categoryOptions"><option :value="c" x-text="c"></option></template>
                                 </select>
                             </div>
                         </div>
 
-                        <div style="margin-top: 1.5rem;">
-                            <label class="block text-sm font-medium mb-1 text-morandi-text/80">簽呈主旨</label>
-                            <input type="text" x-model="form.subject" required class="sys-input w-full border border-morandi-border rounded-lg p-2.5 focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg" placeholder="請輸入主旨概要">
+                        <div>
+                            <label class="block text-xs sm:text-sm font-medium mb-1 text-morandi-text/80">簽呈主旨</label>
+                            <input type="text" x-model="form.subject" required class="w-full border border-morandi-border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg placeholder-morandi-text/40" placeholder="請輸入主旨概要">
                         </div>
 
-                        <div class="p-5 bg-morandi-surface rounded-xl border border-morandi-border" x-show="form.category !== ''" x-cloak style="margin-top: 1.5rem;">
+                        <div class="p-4 sm:p-5 bg-morandi-surface rounded-xl border border-morandi-border" x-show="form.category !== ''" x-cloak>
                             <!-- 格式一 -->
-                            <div x-show="isSpecialCategory" class="space-y-4">
-                                <h3 class="text-sm font-bold text-morandi-text border-l-4 border-morandi-primary pl-2 mb-3">薪酬/專案明細</h3>
-                                <div class="sys-form-grid grid grid-cols-1 sm:grid-cols-3 gap-4" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
-                                    <div><label class="block text-xs mb-1">對象姓名</label><input type="text" x-model="form.special.name" :required="isSpecialCategory" class="sys-input w-full border border-morandi-border rounded p-2 bg-white"></div>
+                            <div x-show="isSpecialCategory" class="space-y-3 sm:space-y-4">
+                                <h3 class="text-xs sm:text-sm font-bold text-morandi-text border-l-4 border-morandi-primary pl-2 mb-2">獎金/專案明細</h3>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                                    <div><label class="block text-xs mb-1">對象姓名</label><input type="text" x-model="form.special.name" :required="isSpecialCategory" class="w-full border border-morandi-border rounded p-2 text-sm bg-white"></div>
                                     <div><label class="block text-xs mb-1">對象職稱</label>
-                                        <select x-model="form.special.title" :required="isSpecialCategory" class="sys-input w-full border border-morandi-border rounded p-2 bg-white">
-                                            <option value="">選擇職稱</option>
+                                        <select x-model="form.special.title" :required="isSpecialCategory" class="w-full border border-morandi-border rounded p-2 text-sm bg-white">
+                                            <option value="">選擇</option>
                                             <template x-for="t in titleOptions"><option :value="t" x-text="t"></option></template>
                                         </select>
                                     </div>
-                                    <div><label class="block text-xs mb-1">金額 (NT$)</label><input type="number" x-model="form.special.amount" :required="isSpecialCategory" class="sys-input w-full border border-morandi-border rounded p-2 bg-white"></div>
+                                    <div><label class="block text-xs mb-1">金額 (NT$)</label><input type="number" x-model="form.special.amount" :required="isSpecialCategory" class="w-full border border-morandi-border rounded p-2 text-sm bg-white"></div>
                                 </div>
-                                <div style="margin-top: 1rem;"><label class="block text-xs mb-1">詳細說明</label><textarea x-model="form.special.desc" rows="3" :required="isSpecialCategory" class="sys-input w-full border border-morandi-border rounded p-2 bg-white"></textarea></div>
+                                <div><label class="block text-xs mb-1">詳細說明</label><textarea x-model="form.special.desc" rows="3" :required="isSpecialCategory" class="w-full border border-morandi-border rounded p-2 text-sm bg-white"></textarea></div>
                             </div>
                             <!-- 格式二 -->
                             <div x-show="!isSpecialCategory && form.category !== ''" class="space-y-2">
-                                <h3 class="text-sm font-bold text-morandi-text border-l-4 border-gray-400 pl-2 mb-3">文字敘述內容</h3>
-                                <textarea x-model="form.generalDesc" rows="4" :required="!isSpecialCategory && form.category !== ''" class="sys-input w-full border border-morandi-border rounded p-3 bg-white"></textarea>
+                                <h3 class="text-xs sm:text-sm font-bold text-morandi-text border-l-4 border-gray-400 pl-2 mb-2">文字內容</h3>
+                                <textarea x-model="form.generalDesc" rows="4" :required="!isSpecialCategory && form.category !== ''" class="w-full border border-morandi-border rounded p-3 text-sm bg-white"></textarea>
                             </div>
                         </div>
 
                         <!-- 照片上傳 -->
-                        <div class="border-2 border-dashed border-morandi-border rounded-xl p-6 bg-morandi-bg text-center relative hover:bg-morandi-surface transition-colors" style="margin-top: 1.5rem;">
-                            <input type="file" multiple accept="image/*" @change="handleImageUpload" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
-                            <svg class="mx-auto h-8 w-8 text-morandi-primary mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display: block; margin: 0 auto 0.5rem auto;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                            <p class="text-sm font-medium text-morandi-text">點擊或拖曳上傳佐證照片 (非必填)</p>
-                            <div class="mt-4 flex flex-wrap gap-3 justify-center relative z-20" x-show="form.images.length > 0" style="display: flex; gap: 0.75rem; justify-content: center; margin-top: 1rem;">
+                        <div class="border-2 border-dashed border-morandi-border rounded-xl p-4 sm:p-6 bg-morandi-bg text-center relative hover:bg-white transition-colors cursor-pointer">
+                            <input type="file" multiple accept="image/*" @change="handleImageUpload" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 text-[0px]">
+                            <svg class="mx-auto w-6 h-6 sm:w-8 sm:h-8 text-morandi-primary mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            <p class="text-xs sm:text-sm font-medium text-morandi-text">點擊上傳佐證照片 (非必填)</p>
+                            
+                            <div class="mt-4 flex flex-wrap gap-2 sm:gap-3 justify-center relative z-20" x-show="form.images.length > 0">
                                 <template x-for="(img, index) in form.images" :key="index">
-                                    <div class="relative w-20 h-20 rounded-lg overflow-hidden border border-morandi-border shadow-sm group bg-white" style="width: 5rem; height: 5rem; position: relative;">
-                                        <img :src="img.url" class="w-full h-full object-cover" style="width: 100%; height: 100%; object-fit: cover;">
-                                        <button type="button" @click.stop="removeImage(index)" class="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity" style="position: absolute; top: 0.25rem; right: 0.25rem;">
-                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 0.75rem; height: 0.75rem;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                    <div class="relative w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden border border-morandi-border shadow-sm bg-white">
+                                        <img :src="img.url" class="w-full h-full object-cover">
+                                        <button type="button" @click.stop="removeImage(index)" class="absolute top-1 right-1 bg-red-500/80 hover:bg-red-600 text-white rounded-full p-1 z-30 touch-action-manipulation">
+                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg>
                                         </button>
                                     </div>
                                 </template>
                             </div>
                         </div>
 
-                        <div class="flex justify-end pt-6 border-t border-morandi-border" style="margin-top: 1.5rem; display: flex; justify-content: flex-end;">
-                            <button type="submit" class="sys-btn sys-btn-primary bg-morandi-primary text-white px-8 py-3 rounded-lg shadow-md hover:bg-morandi-hover font-bold text-lg w-full sm:w-auto" x-text="editingId ? '確認覆蓋並重新送出' : '送出簽核'"></button>
+                        <div class="flex justify-end pt-4 sm:pt-6 border-t border-morandi-border">
+                            <button type="submit" class="bg-morandi-primary text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg shadow-md hover:bg-morandi-hover font-bold text-base sm:text-lg w-full sm:w-auto touch-action-manipulation" x-text="editingId ? '確認覆蓋並重新送出' : '送出簽核單'"></button>
                         </div>
                     </form>
                 </div>
             </div>
 
-            <!-- 視圖 3：系統資料庫維護 (Settings - 僅限 Admin) -->
+            <!-- 視圖 3：系統資料庫維護 (Settings - Admin) -->
             <div x-show="view === 'settings' && currentUser?.role === 'admin'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-cloak>
-                <div class="max-w-5xl mx-auto flex flex-col md:flex-row gap-6" style="display: flex; flex-wrap: wrap; gap: 1.5rem;">
-                    <div class="w-full md:w-64 flex-shrink-0 space-y-2" style="flex: 1 1 200px;">
-                        <button @click="settingTab = 'accounts'" :class="settingTab === 'accounts' ? 'bg-morandi-primary text-white shadow-md' : 'bg-white text-morandi-text hover:bg-morandi-surface'" class="sys-btn sys-btn-block w-full text-left px-4 py-3 rounded-xl font-medium transition-colors border border-morandi-border flex items-center gap-2" style="margin-bottom: 0.5rem; text-align: left; justify-content: flex-start;">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg> 帳號權限管理
+                <div class="max-w-5xl mx-auto flex flex-col md:flex-row gap-4 sm:gap-6 w-full">
+                    
+                    <!-- 手機端設定導覽改用橫向滑動 -->
+                    <div class="w-full md:w-64 flex-shrink-0 flex md:flex-col overflow-x-auto hide-scroll gap-2 pb-2 md:pb-0">
+                        <button @click="settingTab = 'accounts'" :class="settingTab === 'accounts' ? 'bg-morandi-primary text-white shadow-sm' : 'bg-white text-morandi-text hover:bg-morandi-surface'" class="flex-none md:w-full text-left px-3 sm:px-4 py-2 sm:py-3 rounded-xl text-sm sm:text-base font-medium transition-colors border border-morandi-border flex items-center gap-2 whitespace-nowrap touch-action-manipulation">
+                            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg> 帳號管理
                         </button>
-                        <button @click="settingTab = 'categories'" :class="settingTab === 'categories' ? 'bg-morandi-primary text-white shadow-md' : 'bg-white text-morandi-text hover:bg-morandi-surface'" class="sys-btn sys-btn-block w-full text-left px-4 py-3 rounded-xl font-medium transition-colors border border-morandi-border flex items-center gap-2" style="margin-bottom: 0.5rem; text-align: left; justify-content: flex-start;">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg> 類別與職稱維護
+                        <button @click="settingTab = 'categories'" :class="settingTab === 'categories' ? 'bg-morandi-primary text-white shadow-md' : 'bg-white text-morandi-text hover:bg-morandi-surface'" class="flex-none md:w-full text-left px-3 sm:px-4 py-2 sm:py-3 rounded-xl text-sm sm:text-base font-medium transition-colors border border-morandi-border flex items-center gap-2 whitespace-nowrap touch-action-manipulation">
+                            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg> 類別維護
                         </button>
-                        <button @click="settingTab = 'workflow'" :class="settingTab === 'workflow' ? 'bg-morandi-primary text-white shadow-md' : 'bg-white text-morandi-text hover:bg-morandi-surface'" class="sys-btn sys-btn-block w-full text-left px-4 py-3 rounded-xl font-medium transition-colors border border-morandi-border flex items-center gap-2" style="margin-bottom: 0.5rem; text-align: left; justify-content: flex-start;">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg> 核決權限順序
+                        <button @click="settingTab = 'workflow'" :class="settingTab === 'workflow' ? 'bg-morandi-primary text-white shadow-md' : 'bg-white text-morandi-text hover:bg-morandi-surface'" class="flex-none md:w-full text-left px-3 sm:px-4 py-2 sm:py-3 rounded-xl text-sm sm:text-base font-medium transition-colors border border-morandi-border flex items-center gap-2 whitespace-nowrap touch-action-manipulation">
+                            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg> 核決順序
                         </button>
                     </div>
 
-                    <div class="sys-card flex-1 bg-white p-6 sm:p-8 rounded-xl shadow-sm border border-morandi-border min-h-[500px]" style="flex: 3 1 500px;">
+                    <div class="flex-1 bg-white p-4 sm:p-8 rounded-xl shadow-sm border border-morandi-border min-h-[400px] w-full overflow-hidden">
                         
                         <!-- 帳號管理清單 -->
                         <div x-show="settingTab === 'accounts'" x-transition>
-                            <h3 class="text-xl font-bold mb-6 pb-2 border-b border-morandi-border text-morandi-primary">系統登入帳號與密碼變更</h3>
-                            <div class="sys-table-wrapper border border-morandi-border rounded-lg overflow-hidden">
-                                <table class="sys-table w-full text-left text-sm">
+                            <h3 class="text-lg sm:text-xl font-bold mb-4 sm:mb-6 pb-2 border-b border-morandi-border text-morandi-primary">帳號與密碼變更</h3>
+                            <div class="overflow-x-auto w-full border border-morandi-border rounded-lg">
+                                <table class="w-full text-left text-xs sm:text-sm min-w-[500px]">
                                     <thead class="bg-morandi-surface text-morandi-text border-b border-morandi-border">
-                                        <tr><th class="p-3 w-1/4">名稱/職位</th><th class="p-3 w-1/4">登入帳號</th><th class="p-3 w-1/4">密碼管理</th><th class="p-3 w-1/4 text-center">操作</th></tr>
+                                        <tr><th class="p-2 sm:p-3 w-1/4">名稱</th><th class="p-2 sm:p-3 w-1/4">帳號</th><th class="p-2 sm:p-3 w-1/4">密碼管理</th><th class="p-2 sm:p-3 text-center w-1/4">操作</th></tr>
                                     </thead>
                                     <tbody class="divide-y divide-morandi-border">
                                         <template x-for="acc in accounts" :key="acc.username">
                                             <tr class="hover:bg-morandi-bg transition-colors">
-                                                <td class="p-3 font-bold text-morandi-primary" x-text="acc.name"></td>
-                                                <td class="p-3 font-mono" x-text="acc.username"></td>
-                                                <td class="p-3">
-                                                    <!-- 預設顯示密碼 -->
-                                                    <span x-show="editingPwdFor !== acc.username" class="font-mono bg-gray-100 px-2 py-1 rounded text-morandi-text/80" x-text="acc.password"></span>
-                                                    <!-- 編輯狀態 -->
-                                                    <div x-show="editingPwdFor === acc.username" class="flex items-center gap-1" x-cloak style="display: flex; gap: 0.25rem;">
-                                                        <input type="text" x-model="newPwdInput" class="sys-input border border-morandi-primary rounded px-2 py-1 w-20 text-xs focus:outline-none focus:ring-1 focus:ring-morandi-primary" style="padding: 0.25rem; margin: 0; width: 5rem;">
-                                                        <button @click="savePassword(acc.username)" class="sys-btn sys-btn-success bg-green-500 hover:bg-green-600 text-white px-2 py-1.5 rounded text-xs transition-colors" style="padding: 0.25rem 0.5rem;">儲存</button>
-                                                        <button @click="editingPwdFor = null" class="sys-btn sys-btn-secondary bg-gray-400 hover:bg-gray-500 text-white px-2 py-1.5 rounded text-xs transition-colors" style="padding: 0.25rem 0.5rem;">取消</button>
+                                                <td class="p-2 sm:p-3 font-bold text-morandi-primary" x-text="acc.name"></td>
+                                                <td class="p-2 sm:p-3 font-mono" x-text="acc.username"></td>
+                                                <td class="p-2 sm:p-3">
+                                                    <span x-show="editingPwdFor !== acc.username" class="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-morandi-text/80" x-text="acc.password"></span>
+                                                    <div x-show="editingPwdFor === acc.username" class="flex items-center gap-1" x-cloak>
+                                                        <input type="text" x-model="newPwdInput" class="border border-morandi-primary rounded px-1.5 py-1 w-16 sm:w-20 text-xs focus:outline-none">
+                                                        <button @click="savePassword(acc.username)" class="bg-green-500 text-white px-2 py-1 rounded text-[10px] sm:text-xs">儲存</button>
+                                                        <button @click="editingPwdFor = null" class="bg-gray-400 text-white px-2 py-1 rounded text-[10px] sm:text-xs">取消</button>
                                                     </div>
                                                 </td>
-                                                <td class="p-3 text-center flex justify-center items-center gap-1">
-                                                    <button x-show="editingPwdFor !== acc.username" @click="editingPwdFor = acc.username; newPwdInput = acc.password" class="text-blue-600 hover:text-blue-800 text-xs flex items-center justify-center gap-1 transition-colors font-medium bg-blue-50 hover:bg-blue-100 px-2 py-1.5 rounded" style="border:none; padding: 0.25rem 0.5rem; border-radius: 0.25rem;">
-                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg> 變更
-                                                    </button>
-                                                    <!-- 總管理員重置為 888 按鈕 -->
-                                                    <button x-show="editingPwdFor !== acc.username && acc.username !== 'admin'" @click="resetToDefaultPwd(acc.username)" class="text-red-600 hover:text-red-800 text-xs flex items-center justify-center gap-1 transition-colors font-medium bg-red-50 hover:bg-red-100 px-2 py-1.5 rounded" title="強制重置密碼為 888" style="border:none; padding: 0.25rem 0.5rem; border-radius: 0.25rem;">
-                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> 設為 888
-                                                    </button>
+                                                <td class="p-2 sm:p-3">
+                                                    <div class="flex justify-center items-center gap-1 flex-wrap">
+                                                        <button x-show="editingPwdFor !== acc.username" @click="editingPwdFor = acc.username; newPwdInput = acc.password" class="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[10px] sm:text-xs flex items-center gap-0.5 whitespace-nowrap">
+                                                            修改
+                                                        </button>
+                                                        <button x-show="editingPwdFor !== acc.username && acc.username !== 'admin'" @click="resetToDefaultPwd(acc.username)" class="text-red-600 bg-red-50 px-2 py-1 rounded text-[10px] sm:text-xs flex items-center gap-0.5 whitespace-nowrap">
+                                                            預設
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         </template>
@@ -942,42 +877,42 @@
 
                         <!-- 類別與職稱維護 (支援拖曳排序) -->
                         <div x-show="settingTab === 'categories'" x-transition style="display: none;">
-                            <h3 class="text-xl font-bold mb-6 pb-2 border-b border-morandi-border text-morandi-primary">簽呈類別與職稱清單維護</h3>
-                            <div class="sys-form-grid grid grid-cols-1 md:grid-cols-2 gap-8">
-                                <div>
-                                    <h4 class="font-bold mb-3 flex items-center gap-2">【簽呈類別清單】 <span class="text-xs font-normal text-morandi-text/50">支援拖曳排序</span></h4>
-                                    <div class="flex gap-2 mb-3" style="display: flex; gap: 0.5rem;">
-                                        <input type="text" x-model="newCategoryInput" class="sys-input flex-1 border border-morandi-border rounded p-2 text-sm focus:ring-1 focus:ring-morandi-primary outline-none" placeholder="輸入新簽呈類別" style="margin: 0;">
-                                        <button @click="addCategory()" class="sys-btn sys-btn-primary bg-morandi-primary hover:bg-morandi-hover text-white px-3 py-2 rounded text-sm whitespace-nowrap transition-colors">新增</button>
+                            <h3 class="text-lg sm:text-xl font-bold mb-4 pb-2 border-b border-morandi-border text-morandi-primary">清單選項維護</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+                                <div class="w-full">
+                                    <h4 class="font-bold text-sm sm:text-base mb-2 flex items-center gap-2">【簽呈類別】 <span class="text-[10px] text-morandi-text/50">支援拖曳</span></h4>
+                                    <div class="flex gap-1 sm:gap-2 mb-2 w-full">
+                                        <input type="text" x-model="newCategoryInput" class="flex-1 w-0 border border-morandi-border rounded p-1.5 sm:p-2 text-xs sm:text-sm focus:outline-none" placeholder="新類別">
+                                        <button @click="addCategory()" class="bg-morandi-primary text-white px-2 sm:px-3 py-1.5 rounded text-xs sm:text-sm whitespace-nowrap touch-action-manipulation">新增</button>
                                     </div>
-                                    <ul class="border border-morandi-border rounded-lg divide-y divide-morandi-border h-72 overflow-y-auto bg-morandi-bg" style="list-style: none; padding: 0; margin: 0; max-height: 18rem; overflow-y: auto;">
+                                    <ul class="border border-morandi-border rounded-lg divide-y divide-morandi-border h-48 sm:h-64 overflow-y-auto bg-morandi-bg w-full">
                                         <template x-for="(cat, index) in categoryOptions" :key="cat">
                                             <li draggable="true" @dragstart="dragStart(index, 'categoryOptions', $event)" @dragover.prevent="dragEnter(index, 'categoryOptions', $event)" @dragend="dragEnd($event)"
-                                                class="px-4 py-2.5 text-sm hover:bg-white flex justify-between items-center transition-colors cursor-move" style="display: flex; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid #e3d5d5;">
-                                                <div class="flex items-center gap-2" style="display: flex; align-items: center; gap: 0.5rem;">
-                                                    <svg class="w-4 h-4 text-morandi-text/40" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"></path></svg>
-                                                    <span x-text="cat" class="font-medium text-morandi-text pointer-events-none"></span>
+                                                class="px-2 sm:px-3 py-2 text-xs sm:text-sm flex justify-between items-center bg-white mb-px cursor-move">
+                                                <div class="flex items-center gap-1.5 overflow-hidden">
+                                                    <svg class="w-3 h-3 text-morandi-text/40 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"></path></svg>
+                                                    <span x-text="cat" class="font-medium truncate pointer-events-none"></span>
                                                 </div>
-                                                <button @click="deleteCategory(index)" class="text-morandi-text/40 hover:text-red-500 text-xs transition-colors p-1" style="background: none; border: none;">刪除</button>
+                                                <button @click="deleteCategory(index)" class="text-morandi-text/40 hover:text-red-500 text-[10px] sm:text-xs p-1 flex-shrink-0 touch-action-manipulation">刪除</button>
                                             </li>
                                         </template>
                                     </ul>
                                 </div>
-                                <div>
-                                    <h4 class="font-bold mb-3 flex items-center gap-2">【對象職稱清單】 <span class="text-xs font-normal text-morandi-text/50">支援拖曳排序</span></h4>
-                                    <div class="flex gap-2 mb-3" style="display: flex; gap: 0.5rem;">
-                                        <input type="text" x-model="newTitleInput" class="sys-input flex-1 border border-morandi-border rounded p-2 text-sm focus:ring-1 focus:ring-morandi-primary outline-none" placeholder="輸入新對象職稱" style="margin: 0;">
-                                        <button @click="addTitle()" class="sys-btn sys-btn-primary bg-morandi-primary hover:bg-morandi-hover text-white px-3 py-2 rounded text-sm whitespace-nowrap transition-colors">新增</button>
+                                <div class="w-full">
+                                    <h4 class="font-bold text-sm sm:text-base mb-2 flex items-center gap-2">【對象職稱】 <span class="text-[10px] text-morandi-text/50">支援拖曳</span></h4>
+                                    <div class="flex gap-1 sm:gap-2 mb-2 w-full">
+                                        <input type="text" x-model="newTitleInput" class="flex-1 w-0 border border-morandi-border rounded p-1.5 sm:p-2 text-xs sm:text-sm focus:outline-none" placeholder="新職稱">
+                                        <button @click="addTitle()" class="bg-morandi-primary text-white px-2 sm:px-3 py-1.5 rounded text-xs sm:text-sm whitespace-nowrap touch-action-manipulation">新增</button>
                                     </div>
-                                    <ul class="border border-morandi-border rounded-lg divide-y divide-morandi-border h-72 overflow-y-auto bg-morandi-bg" style="list-style: none; padding: 0; margin: 0; max-height: 18rem; overflow-y: auto;">
+                                    <ul class="border border-morandi-border rounded-lg divide-y divide-morandi-border h-48 sm:h-64 overflow-y-auto bg-morandi-bg w-full">
                                         <template x-for="(title, index) in titleOptions" :key="title">
                                             <li draggable="true" @dragstart="dragStart(index, 'titleOptions', $event)" @dragover.prevent="dragEnter(index, 'titleOptions', $event)" @dragend="dragEnd($event)"
-                                                class="px-4 py-2.5 text-sm hover:bg-white flex justify-between items-center transition-colors cursor-move" style="display: flex; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid #e3d5d5;">
-                                                <div class="flex items-center gap-2" style="display: flex; align-items: center; gap: 0.5rem;">
-                                                    <svg class="w-4 h-4 text-morandi-text/40" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"></path></svg>
-                                                    <span x-text="title" class="font-medium text-morandi-text pointer-events-none"></span>
+                                                class="px-2 sm:px-3 py-2 text-xs sm:text-sm flex justify-between items-center bg-white mb-px cursor-move">
+                                                <div class="flex items-center gap-1.5 overflow-hidden">
+                                                    <svg class="w-3 h-3 text-morandi-text/40 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"></path></svg>
+                                                    <span x-text="title" class="font-medium truncate pointer-events-none"></span>
                                                 </div>
-                                                <button @click="deleteTitle(index)" class="text-morandi-text/40 hover:text-red-500 text-xs transition-colors p-1" style="background: none; border: none;">刪除</button>
+                                                <button @click="deleteTitle(index)" class="text-morandi-text/40 hover:text-red-500 text-[10px] sm:text-xs p-1 flex-shrink-0 touch-action-manipulation">刪除</button>
                                             </li>
                                         </template>
                                     </ul>
@@ -987,22 +922,22 @@
 
                         <!-- 核決順序 -->
                         <div x-show="settingTab === 'workflow'" x-transition style="display: none;">
-                            <h3 class="text-xl font-bold mb-6 pb-2 border-b border-morandi-border text-morandi-primary">核決流程規範</h3>
-                            <div class="space-y-4" style="display: flex; flex-direction: column; gap: 1rem;">
-                                <div class="p-4 border border-morandi-border rounded-lg bg-morandi-surface" style="padding: 1rem; border: 1px solid #e3d5d5; border-radius: 0.5rem;"><strong>發起：</strong> 各分院帳號填單送出</div>
-                                <div class="text-center text-morandi-primary" style="text-align: center; color: #c49a9a;">↓ 系統自動派送</div>
-                                <div class="p-4 border border-morandi-border rounded-lg bg-white relative" style="padding: 1rem; border: 1px solid #e3d5d5; border-radius: 0.5rem; background: white;">
-                                    <span class="absolute right-2 top-2 text-xs bg-green-100 text-green-700 px-2 py-1 rounded" style="float: right; color: #16a34a;">可直接決行 / 加簽</span>
+                            <h3 class="text-lg sm:text-xl font-bold mb-4 pb-2 border-b border-morandi-border text-morandi-primary">核決流程規範</h3>
+                            <div class="space-y-3 sm:space-y-4 text-xs sm:text-sm">
+                                <div class="p-3 border border-morandi-border rounded-lg bg-morandi-surface"><strong>發起：</strong> 各分院帳號填單送出</div>
+                                <div class="text-center text-morandi-primary">↓ 自動派送</div>
+                                <div class="p-3 border border-morandi-border rounded-lg bg-white relative">
+                                    <span class="absolute right-2 top-2 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded">決行/加簽</span>
                                     <strong>第一關：</strong> 營運協理 (H0004)
                                 </div>
-                                <div class="text-center text-morandi-primary" style="text-align: center; color: #c49a9a;">↓ 若選擇加簽上呈</div>
-                                <div class="p-4 border border-morandi-border rounded-lg bg-white relative" style="padding: 1rem; border: 1px solid #e3d5d5; border-radius: 0.5rem; background: white;">
-                                    <span class="absolute right-2 top-2 text-xs bg-green-100 text-green-700 px-2 py-1 rounded" style="float: right; color: #16a34a;">可直接決行 / 加簽</span>
+                                <div class="text-center text-morandi-primary">↓ 若加簽</div>
+                                <div class="p-3 border border-morandi-border rounded-lg bg-white relative">
+                                    <span class="absolute right-2 top-2 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded">決行/加簽</span>
                                     <strong>第二關：</strong> 營運副總 (M0053)
                                 </div>
-                                <div class="text-center text-morandi-primary" style="text-align: center; color: #c49a9a;">↓ 若選擇加簽上呈</div>
-                                <div class="p-4 border border-morandi-border rounded-lg bg-white relative" style="padding: 1rem; border: 1px solid #e3d5d5; border-radius: 0.5rem; background: white;">
-                                    <span class="absolute right-2 top-2 text-xs bg-red-100 text-red-700 px-2 py-1 rounded" style="float: right; color: #dc2626;">最終決行</span>
+                                <div class="text-center text-morandi-primary">↓ 若加簽</div>
+                                <div class="p-3 border border-morandi-border rounded-lg bg-white relative">
+                                    <span class="absolute right-2 top-2 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded">最終決行</span>
                                     <strong>最終關：</strong> 執行長 (H0002)
                                 </div>
                             </div>
@@ -1013,107 +948,122 @@
             </div>
 
             <!-- 使用者自行修改密碼 Modal -->
-            <div x-show="changePwdModal.show" class="sys-modal-overlay fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm" x-cloak x-transition>
-                <div class="sys-modal-content sys-modal-sm bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border border-morandi-border" @click.away="if(!changePwdModal.force) changePwdModal.show = false">
-                    <div class="sys-modal-header bg-morandi-surface px-6 py-4 border-b border-morandi-border flex justify-between items-center">
-                        <h3 class="font-bold text-lg text-morandi-primary flex items-center gap-2">
+            <div x-show="changePwdModal.show" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" x-cloak x-transition>
+                <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border border-morandi-border flex flex-col" @click.away="if(!changePwdModal.force) changePwdModal.show = false">
+                    <div class="bg-morandi-surface px-5 sm:px-6 py-4 border-b border-morandi-border flex justify-between items-center">
+                        <h3 class="font-bold text-base sm:text-lg text-morandi-primary flex items-center gap-2">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                             <span x-text="changePwdModal.force ? '請先修改預設密碼' : '修改個人密碼'"></span>
                         </h3>
-                        <button x-show="!changePwdModal.force" @click="changePwdModal.show = false" class="text-morandi-text/50 hover:text-morandi-text text-2xl leading-none" style="background: none; border: none; font-size: 1.5rem;">&times;</button>
+                        <button x-show="!changePwdModal.force" @click="changePwdModal.show = false" class="text-morandi-text/50 hover:text-morandi-text text-2xl leading-none px-2 touch-action-manipulation">&times;</button>
                     </div>
-                    <div class="sys-modal-body p-6 space-y-4">
+                    <div class="p-5 sm:p-6 space-y-4">
                         <div x-show="!changePwdModal.force">
-                            <label class="block text-sm font-medium text-morandi-text mb-1">目前密碼</label>
-                            <input type="password" x-model="changePwdModal.oldPwd" class="sys-input w-full border border-morandi-border focus:ring-1 focus:ring-morandi-primary rounded p-2 text-sm bg-morandi-bg outline-none" placeholder="請輸入舊密碼">
+                            <label class="block text-xs sm:text-sm font-medium text-morandi-text mb-1">目前密碼</label>
+                            <input type="password" x-model="changePwdModal.oldPwd" class="w-full border border-morandi-border focus:ring-1 focus:ring-morandi-primary rounded p-2 text-sm bg-morandi-bg outline-none" placeholder="舊密碼">
                         </div>
-                        <div style="margin-top: 1rem;">
-                            <label class="block text-sm font-medium text-morandi-text mb-1">新密碼</label>
-                            <input type="password" x-model="changePwdModal.newPwd" class="sys-input w-full border border-morandi-border focus:ring-1 focus:ring-morandi-primary rounded p-2 text-sm bg-morandi-bg outline-none" placeholder="請輸入新密碼 (至少 4 碼)">
+                        <div>
+                            <label class="block text-xs sm:text-sm font-medium text-morandi-text mb-1">新密碼</label>
+                            <input type="password" x-model="changePwdModal.newPwd" class="w-full border border-morandi-border focus:ring-1 focus:ring-morandi-primary rounded p-2 text-sm bg-morandi-bg outline-none" placeholder="至少 4 碼">
                         </div>
-                        <div style="margin-top: 1rem;">
-                            <label class="block text-sm font-medium text-morandi-text mb-1">確認新密碼</label>
-                            <input type="password" x-model="changePwdModal.confirmPwd" class="sys-input w-full border border-morandi-border focus:ring-1 focus:ring-morandi-primary rounded p-2 text-sm bg-morandi-bg outline-none" placeholder="再次輸入新密碼">
+                        <div>
+                            <label class="block text-xs sm:text-sm font-medium text-morandi-text mb-1">確認新密碼</label>
+                            <input type="password" x-model="changePwdModal.confirmPwd" class="w-full border border-morandi-border focus:ring-1 focus:ring-morandi-primary rounded p-2 text-sm bg-morandi-bg outline-none" placeholder="再次輸入">
                         </div>
-                        <div class="flex gap-2 mt-2" style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
-                            <button @click="updateMyPassword()" class="sys-btn sys-btn-primary flex-1 bg-morandi-primary text-white py-2.5 rounded shadow hover:bg-morandi-hover transition-colors font-bold" style="width: 100%;">儲存修改</button>
-                            <button x-show="changePwdModal.force" @click="logout(); changePwdModal.show = false;" class="sys-btn sys-btn-secondary bg-gray-400 text-white px-4 py-2.5 rounded shadow hover:bg-gray-500 transition-colors font-bold">先登出</button>
+                        <div class="flex gap-2 pt-2">
+                            <button @click="updateMyPassword()" class="flex-1 bg-morandi-primary text-white py-2.5 rounded shadow hover:bg-morandi-hover font-bold text-sm touch-action-manipulation">儲存</button>
+                            <button x-show="changePwdModal.force" @click="logout(); changePwdModal.show = false;" class="bg-gray-400 text-white px-4 py-2.5 rounded shadow text-sm font-bold touch-action-manipulation">登出</button>
                         </div>
                     </div>
                 </div>
             </div>
             
             <!-- 全域 Toast 通知 -->
-            <div x-show="toast.show" x-transition class="sys-toast fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-morandi-text text-white px-6 py-4 rounded-xl shadow-2xl" x-cloak>
-                <div class="bg-white/20 rounded-full p-1"><svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 1.25rem; height: 1.25rem;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg></div>
-                <span x-text="toast.message" class="text-sm font-medium tracking-wide"></span>
+            <div x-show="toast.show" x-transition class="fixed bottom-6 left-1/2 -translate-x-1/2 sm:translate-x-0 sm:left-auto sm:right-6 z-[9999] flex items-center gap-2 sm:gap-3 bg-morandi-text text-white px-4 sm:px-6 py-3 sm:py-4 rounded-xl shadow-2xl w-[90%] sm:w-auto" x-cloak>
+                <div class="bg-white/20 rounded-full p-1 flex-shrink-0"><svg class="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg></div>
+                <span x-text="toast.message" class="text-xs sm:text-sm font-medium tracking-wide"></span>
             </div>
 
-            <!-- 完整詳細資訊與模擬簽核 Modal -->
-            <div x-data="{ confirmDelete: false }" x-show="actionModal.show" class="sys-modal-overlay fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4 backdrop-blur-sm" x-cloak x-transition>
-                <div class="sys-modal-content sys-modal-lg bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-morandi-border" @click.away="actionModal.show = false; confirmDelete = false;">
-                    <!-- Modal Header -->
-                    <div class="sys-modal-header bg-morandi-surface px-6 py-4 border-b border-morandi-border flex justify-between items-center sticky top-0 z-10">
-                        <h3 class="font-bold text-lg text-morandi-primary flex items-center gap-2">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            <!-- 完整詳細資訊與模擬簽核 Modal (行動優先版) -->
+            <div x-data="{ confirmDelete: false }" x-show="actionModal.show" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm" x-cloak x-transition>
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[95vh] flex flex-col overflow-hidden border border-morandi-border" @click.away="actionModal.show = false; confirmDelete = false;">
+                    
+                    <div class="bg-morandi-surface px-4 sm:px-6 py-3 sm:py-4 border-b border-morandi-border flex justify-between items-center sticky top-0 z-10 shrink-0">
+                        <h3 class="font-bold text-base sm:text-lg text-morandi-primary flex items-center gap-2">
+                            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                             簽核單詳細內容
                         </h3>
-                        <button @click="actionModal.show = false" class="text-morandi-text/50 hover:text-morandi-text text-2xl leading-none" style="background: none; border: none; font-size: 1.5rem;">&times;</button>
+                        <button @click="actionModal.show = false" class="text-morandi-text/50 hover:text-morandi-text text-2xl leading-none px-2 touch-action-manipulation">&times;</button>
                     </div>
                     
-                    <!-- Modal Body (可滾動區域) -->
-                    <div class="sys-modal-body p-6 overflow-y-auto flex-1" x-show="actionModal.item">
-                        <div class="sys-form-grid grid grid-cols-2 gap-y-4 gap-x-6 text-sm mb-6 pb-6 border-b border-morandi-border" style="border-bottom: 1px solid #e3d5d5; padding-bottom: 1rem; margin-bottom: 1rem;">
-                            <div><span class="text-morandi-text/60 block text-xs">單號</span><span class="font-mono font-bold" x-text="actionModal.item?.id"></span></div>
-                            <div><span class="text-morandi-text/60 block text-xs">狀態/當前關卡</span>
-                                <span class="font-bold" :class="{'text-morandi-primary': actionModal.item?.status === '送簽中', 'text-green-600': actionModal.item?.status === '已簽核', 'text-red-500': actionModal.item?.status === '退回'}" x-text="actionModal.item?.status"></span>
-                                <span x-show="actionModal.item?.status === '送簽中'" class="text-xs ml-2 bg-morandi-bg px-2 py-0.5 rounded border border-morandi-border" x-text="actionModal.item?.currentLevel === 'manager' ? '(營運協理)' : (actionModal.item?.currentLevel === 'vp' ? '(營運副總)' : '(執行長)')"></span>
+                    <div class="p-4 sm:p-6 overflow-y-auto flex-1 hide-scroll" x-show="actionModal.item">
+                        <!-- 詳細資訊使用單欄適應 -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-4 text-xs sm:text-sm mb-5 pb-5 border-b border-morandi-border">
+                            <div class="flex flex-row sm:flex-col justify-between sm:justify-start border-b sm:border-none border-dashed border-gray-200 pb-1 sm:pb-0">
+                                <span class="text-morandi-text/60">單號</span>
+                                <span class="font-mono font-bold" x-text="actionModal.item?.id"></span>
                             </div>
-                            <div style="margin-top: 0.5rem;"><span class="text-morandi-text/60 block text-xs">申請分院</span><span class="font-bold text-morandi-text" x-text="actionModal.item?.branch"></span></div>
-                            <div style="margin-top: 0.5rem;"><span class="text-morandi-text/60 block text-xs">申請人 / 日期</span><span x-text="actionModal.item?.applicant + ' (' + actionModal.item?.date + ')'"></span></div>
-                            <div class="col-span-2" style="margin-top: 0.5rem;"><span class="text-morandi-text/60 block text-xs">簽呈類別</span><span class="bg-morandi-surface px-2 py-1 rounded text-xs font-bold text-morandi-primary" x-text="actionModal.item?.category"></span></div>
-                            <div class="col-span-2" style="margin-top: 0.5rem;"><span class="text-morandi-text/60 block text-xs">簽呈主旨</span><span class="font-bold text-lg text-morandi-text" x-text="actionModal.item?.subject"></span></div>
-                        </div>
-
-                        <!-- 內容細節區塊 -->
-                        <div class="mb-6" style="margin-bottom: 1.5rem;">
-                            <h4 class="text-sm font-bold border-l-4 border-morandi-primary pl-2 mb-3 text-morandi-text" style="border-left: 4px solid #c49a9a; padding-left: 0.5rem;">內容說明</h4>
-                            
-                            <div x-show="['人事薪酬', '專案業務'].includes(actionModal.item?.category)" class="bg-morandi-bg p-4 rounded-lg border border-morandi-border/50 text-sm space-y-3" style="background: #fbf8f8; padding: 1rem; border: 1px solid #e3d5d5; border-radius: 0.5rem;">
-                                <div class="grid grid-cols-3 gap-4" style="display: flex; flex-wrap: wrap; gap: 1rem;">
-                                    <div style="flex: 1;"><span class="text-morandi-text/60 text-xs block">對象姓名</span><span class="font-bold" x-text="actionModal.item?.special?.name || '-'"></span></div>
-                                    <div style="flex: 1;"><span class="text-morandi-text/60 text-xs block">職稱</span><span x-text="actionModal.item?.special?.title || '-'"></span></div>
-                                    <div style="flex: 1;"><span class="text-morandi-text/60 text-xs block">金額</span><span class="font-bold text-morandi-primary" x-text="actionModal.item?.special?.amount ? 'NT$ ' + actionModal.item?.special?.amount : '-'"></span></div>
+                            <div class="flex flex-row sm:flex-col justify-between sm:justify-start border-b sm:border-none border-dashed border-gray-200 pb-1 sm:pb-0">
+                                <span class="text-morandi-text/60">狀態/關卡</span>
+                                <div>
+                                    <span class="font-bold" :class="{'text-morandi-primary': actionModal.item?.status === '送簽中', 'text-green-600': actionModal.item?.status === '已簽核', 'text-red-500': actionModal.item?.status === '退回'}" x-text="actionModal.item?.status"></span>
+                                    <span x-show="actionModal.item?.status === '送簽中'" class="text-[10px] ml-1 bg-morandi-bg px-1.5 py-0.5 rounded border border-morandi-border" x-text="actionModal.item?.currentLevel === 'manager' ? '協理' : (actionModal.item?.currentLevel === 'vp' ? '副總' : '執行長')"></span>
                                 </div>
-                                <div style="margin-top: 1rem;"><span class="text-morandi-text/60 text-xs block">詳細說明</span><p class="whitespace-pre-wrap mt-1" x-text="actionModal.item?.special?.desc || '無'"></p></div>
                             </div>
-                            
-                            <div x-show="!['人事薪酬', '專案業務'].includes(actionModal.item?.category)" class="bg-morandi-bg p-4 rounded-lg border border-morandi-border/50 text-sm whitespace-pre-wrap" x-text="actionModal.item?.generalDesc || '無詳細內容'" style="background: #fbf8f8; padding: 1rem; border: 1px solid #e3d5d5; border-radius: 0.5rem;"></div>
+                            <div class="flex flex-row sm:flex-col justify-between sm:justify-start border-b sm:border-none border-dashed border-gray-200 pb-1 sm:pb-0">
+                                <span class="text-morandi-text/60">申請分院</span>
+                                <span class="font-bold text-morandi-text" x-text="actionModal.item?.branch"></span>
+                            </div>
+                            <div class="flex flex-row sm:flex-col justify-between sm:justify-start border-b sm:border-none border-dashed border-gray-200 pb-1 sm:pb-0">
+                                <span class="text-morandi-text/60">申請人 / 日期</span>
+                                <span x-text="actionModal.item?.applicant + ' (' + actionModal.item?.date + ')'"></span>
+                            </div>
+                            <div class="sm:col-span-2 pt-1 sm:pt-0">
+                                <span class="text-morandi-text/60 block mb-1">簽呈類別</span>
+                                <span class="bg-morandi-surface px-2 py-1 rounded text-xs font-bold text-morandi-primary" x-text="actionModal.item?.category"></span>
+                            </div>
+                            <div class="sm:col-span-2 pt-1 sm:pt-0">
+                                <span class="text-morandi-text/60 block mb-1">簽呈主旨</span>
+                                <span class="font-bold text-base sm:text-lg text-morandi-text leading-tight" x-text="actionModal.item?.subject"></span>
+                            </div>
                         </div>
 
-                        <!-- 圖片展示區 -->
-                        <div x-show="actionModal.item?.images && actionModal.item.images.length > 0" class="mb-6" style="margin-bottom: 1.5rem;">
-                            <h4 class="text-sm font-bold border-l-4 border-morandi-primary pl-2 mb-3 text-morandi-text" style="border-left: 4px solid #c49a9a; padding-left: 0.5rem;">附檔照片 (<span x-text="actionModal.item?.images?.length"></span>)</h4>
-                            <div class="flex flex-wrap gap-3" style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <div class="mb-5">
+                            <h4 class="text-xs sm:text-sm font-bold border-l-4 border-morandi-primary pl-2 mb-2 text-morandi-text">內容說明</h4>
+                            
+                            <div x-show="['人事薪酬', '專案業務'].includes(actionModal.item?.category)" class="bg-morandi-bg p-3 sm:p-4 rounded-lg border border-morandi-border/50 text-xs sm:text-sm space-y-2">
+                                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                    <div><span class="text-morandi-text/60 text-[10px] sm:text-xs block">姓名</span><span class="font-bold truncate block" x-text="actionModal.item?.special?.name || '-'"></span></div>
+                                    <div><span class="text-morandi-text/60 text-[10px] sm:text-xs block">職稱</span><span class="truncate block" x-text="actionModal.item?.special?.title || '-'"></span></div>
+                                    <div class="col-span-2 sm:col-span-1"><span class="text-morandi-text/60 text-[10px] sm:text-xs block">金額</span><span class="font-bold text-morandi-primary" x-text="actionModal.item?.special?.amount ? 'NT$ ' + actionModal.item?.special?.amount : '-'"></span></div>
+                                </div>
+                                <div class="pt-2 border-t border-dashed border-gray-200"><span class="text-morandi-text/60 text-[10px] sm:text-xs block">說明</span><p class="whitespace-pre-wrap mt-1" x-text="actionModal.item?.special?.desc || '無'"></p></div>
+                            </div>
+                            
+                            <div x-show="!['人事薪酬', '專案業務'].includes(actionModal.item?.category)" class="bg-morandi-bg p-3 sm:p-4 rounded-lg border border-morandi-border/50 text-xs sm:text-sm whitespace-pre-wrap" x-text="actionModal.item?.generalDesc || '無詳細內容'"></div>
+                        </div>
+
+                        <div x-show="actionModal.item?.images && actionModal.item.images.length > 0" class="mb-5">
+                            <h4 class="text-xs sm:text-sm font-bold border-l-4 border-morandi-primary pl-2 mb-2 text-morandi-text">附檔照片</h4>
+                            <div class="flex flex-wrap gap-2">
                                 <template x-for="img in actionModal.item?.images">
-                                    <div class="w-24 h-24 rounded-lg overflow-hidden border border-morandi-border cursor-pointer shadow-sm hover:ring-2 ring-morandi-primary transition-all" @click.stop="openImage(img.url)" style="width: 6rem; height: 6rem;">
-                                        <img :src="img.url" class="w-full h-full object-cover" style="width: 100%; height: 100%; object-fit: cover;">
+                                    <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden border border-morandi-border cursor-pointer shadow-sm touch-action-manipulation" @click.stop="openImage(img.url)">
+                                        <img :src="img.url" class="w-full h-full object-cover">
                                     </div>
                                 </template>
                             </div>
                         </div>
 
-                        <!-- 歷史歷程時間軸 (Audit Trail) -->
                         <div x-show="actionModal.item?.history && actionModal.item.history.length > 0">
-                            <h4 class="text-sm font-bold border-l-4 border-morandi-primary pl-2 mb-4 text-morandi-text" style="border-left: 4px solid #c49a9a; padding-left: 0.5rem;">簽核歷程</h4>
-                            <ul class="space-y-4 relative border-l-2 border-morandi-border ml-2 pl-4" style="border-left: 2px solid #e3d5d5; padding-left: 1rem; list-style: none;">
+                            <h4 class="text-xs sm:text-sm font-bold border-l-4 border-morandi-primary pl-2 mb-3 text-morandi-text">簽核歷程</h4>
+                            <ul class="space-y-3 relative border-l-2 border-morandi-border ml-2 pl-3 sm:pl-4">
                                 <template x-for="(log, idx) in actionModal.item?.history" :key="idx">
-                                    <li class="relative" style="margin-bottom: 1rem;">
-                                        <div class="absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full bg-morandi-primary ring-4 ring-white" style="position: absolute; left: -1.35rem; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: #c49a9a; border: 2px solid white;"></div>
-                                        <div class="text-xs text-morandi-text/60 mb-0.5" x-text="log.time"></div>
-                                        <div class="text-sm font-medium text-morandi-text">
+                                    <li class="relative">
+                                        <div class="absolute -left-[17px] sm:-left-[21px] top-1 sm:top-1.5 w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-morandi-primary ring-2 sm:ring-4 ring-white"></div>
+                                        <div class="text-[10px] sm:text-xs text-morandi-text/60 mb-0.5" x-text="log.time"></div>
+                                        <div class="text-xs sm:text-sm font-medium text-morandi-text leading-tight">
                                             <span x-text="log.user"></span>
-                                            <span class="mx-1 text-morandi-text/40">已執行</span>
+                                            <span class="mx-0.5 sm:mx-1 text-morandi-text/40">已執行</span>
                                             <span class="text-morandi-primary font-bold" x-text="log.action"></span>
                                         </div>
                                     </li>
@@ -1122,60 +1072,49 @@
                         </div>
                     </div>
 
-                    <!-- Modal Footer (簽核操作按鈕區) -->
-                    <div class="sys-modal-footer bg-morandi-surface px-6 py-4 border-t border-morandi-border">
+                    <div class="bg-morandi-surface px-4 sm:px-6 py-3 sm:py-4 border-t border-morandi-border shrink-0">
                         
-                        <!-- 重新編輯並重送 (限該分院人員或Admin) -->
                         <div x-show="actionModal.item?.status === '退回' && (currentUser?.role === 'admin' || (currentUser?.role === 'branch' && currentUser?.branch === actionModal.item?.branch))">
-                            <button @click="editResubmit(actionModal.item)" class="sys-btn w-full bg-orange-500 hover:bg-orange-600 text-white py-2.5 rounded shadow-sm transition-colors text-sm font-bold flex justify-center items-center gap-2" style="background: #f97316; width: 100%;">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                                重新編輯並重新送簽
+                            <button @click="editResubmit(actionModal.item)" class="w-full bg-orange-500 text-white py-2.5 rounded shadow-sm text-sm font-bold flex justify-center items-center gap-1.5 touch-action-manipulation">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                                修改後重新送簽
                             </button>
                         </div>
 
-                        <!-- 一般主管審核區塊 -->
                         <div x-show="actionModal.item?.status === '送簽中' && (currentUser?.role === 'admin' || (currentUser?.role === 'manager' && actionModal.item?.currentLevel === 'manager') || (currentUser?.role === 'vp' && actionModal.item?.currentLevel === 'vp') || (currentUser?.role === 'ceo' && actionModal.item?.currentLevel === 'ceo'))">
-                            <p class="text-sm font-bold mb-3 text-center text-morandi-primary" style="text-align: center; margin-bottom: 0.5rem; color: #c49a9a;">主管決行區塊</p>
-                            <div class="sys-form-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2" style="gap: 0.5rem;">
-                                <button @click="processApproval('approve')" class="sys-btn sys-btn-success bg-green-600 hover:bg-green-700 text-white py-2 rounded text-sm font-medium shadow-sm transition-colors" style="width: 100%;">核准通過</button>
-                                <button x-show="actionModal.item?.currentLevel === 'manager'" @click="processApproval('escalate_vp')" class="sys-btn sys-btn-info bg-blue-600 hover:bg-blue-700 text-white py-2 rounded text-sm font-medium shadow-sm transition-colors" style="width: 100%;">加簽：營運副總</button>
-                                <button x-show="actionModal.item?.currentLevel === 'vp'" @click="processApproval('escalate_ceo')" class="sys-btn" style="background: #9333ea; color: white; width: 100%;">加簽：執行長</button>
-                                <button @click="processApproval('reject')" class="sys-btn sys-btn-danger bg-red-500 hover:bg-red-600 text-white py-2 rounded text-sm font-medium shadow-sm transition-colors" style="width: 100%;">退回申請</button>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button @click="processApproval('approve')" class="col-span-2 bg-green-600 text-white py-2.5 rounded text-sm font-bold shadow-sm touch-action-manipulation">決行：核准通過</button>
+                                <button x-show="actionModal.item?.currentLevel === 'manager'" @click="processApproval('escalate_vp')" class="bg-blue-600 text-white py-2 rounded text-xs sm:text-sm font-medium shadow-sm touch-action-manipulation">上呈營運副總</button>
+                                <button x-show="actionModal.item?.currentLevel === 'vp'" @click="processApproval('escalate_ceo')" class="bg-purple-600 text-white py-2 rounded text-xs sm:text-sm font-medium shadow-sm touch-action-manipulation">上呈執行長</button>
+                                <button @click="processApproval('reject')" class="bg-red-500 text-white py-2 rounded text-xs sm:text-sm font-medium shadow-sm touch-action-manipulation" :class="actionModal.item?.currentLevel === 'ceo' ? 'col-span-2' : ''">退回申請</button>
                             </div>
                         </div>
-                        <div x-show="actionModal.item?.status === '送簽中' && !(currentUser?.role === 'admin' || (currentUser?.role === 'manager' && actionModal.item?.currentLevel === 'manager') || (currentUser?.role === 'vp' && actionModal.item?.currentLevel === 'vp') || (currentUser?.role === 'ceo' && actionModal.item?.currentLevel === 'ceo'))" class="text-center text-sm text-morandi-text/60" style="text-align: center;">
-                            (目前位於其他主管簽核關卡中，您僅能檢視內容)
-                        </div>
 
-                        <!-- 總管理者專屬權限區塊 -->
-                        <div x-show="currentUser?.role === 'admin'" class="mt-4 pt-4 border-t border-red-200" style="margin-top: 1rem; border-top: 1px solid #fca5a5; padding-top: 1rem;">
-                            <p class="text-sm font-bold text-red-600 mb-2 flex items-center gap-1" style="color: #dc2626; margin-bottom: 0.5rem; display: flex; align-items: center;">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                                總管理者特權操作
+                        <div x-show="currentUser?.role === 'admin'" class="mt-3 pt-3 border-t border-red-200">
+                            <p class="text-xs font-bold text-red-600 mb-2 flex items-center gap-1">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                                Admin 特權
                             </p>
-                            <div class="flex flex-wrap gap-2" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                                <button @click="revertApproval(actionModal.item)" x-show="actionModal.item?.status !== '送簽中'" class="sys-btn bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded text-sm font-medium shadow-sm transition-colors" style="background: #f97316; color: white;">
-                                    撤銷決行 (回退至送簽中)
+                            <div class="flex gap-2">
+                                <button @click="revertApproval(actionModal.item)" x-show="actionModal.item?.status !== '送簽中'" class="flex-1 bg-orange-500 text-white py-2 rounded text-xs font-medium shadow-sm touch-action-manipulation">
+                                    撤銷回送簽
                                 </button>
-                                
-                                <div class="relative" style="display: inline-block;">
-                                    <button x-show="!confirmDelete" @click="confirmDelete = true" class="sys-btn sys-btn-secondary bg-gray-500 hover:bg-red-600 text-white px-4 py-2 rounded text-sm font-medium shadow-sm transition-colors">
-                                        永久刪除單據
-                                    </button>
-                                    <button x-show="confirmDelete" @click="deleteApproval(actionModal.item?.id); confirmDelete = false;" @click.away="confirmDelete = false" class="sys-btn sys-btn-danger bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm font-bold shadow-sm transition-colors animate-pulse">
-                                        確定刪除？
-                                    </button>
-                                </div>
+                                <button x-show="!confirmDelete" @click="confirmDelete = true" class="flex-1 bg-gray-500 text-white py-2 rounded text-xs font-medium shadow-sm touch-action-manipulation">
+                                    刪除單據
+                                </button>
+                                <button x-show="confirmDelete" @click="deleteApproval(actionModal.item?.id); confirmDelete = false;" @click.away="confirmDelete = false" class="flex-1 bg-red-600 text-white py-2 rounded text-xs font-bold shadow-sm animate-pulse touch-action-manipulation">
+                                    確認刪除
+                                </button>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- 全螢幕圖片預覽燈箱 (z-index 60) -->
-            <div x-show="imageModal.show" class="sys-modal-overlay fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm" style="background: rgba(0,0,0,0.9);" x-cloak x-transition>
-                <button @click="imageModal.show = false" class="absolute top-6 right-6 text-white hover:text-gray-300 text-4xl leading-none z-10" style="position: absolute; top: 1.5rem; right: 1.5rem; font-size: 2rem; background: none; border: none; color: white;">&times;</button>
-                <img :src="imageModal.url" class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl relative" style="max-height: 90vh; max-width: 100%;" @click.away="imageModal.show = false">
+            <!-- 全螢幕圖片預覽燈箱 -->
+            <div x-show="imageModal.show" class="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center p-2 backdrop-blur-sm" x-cloak x-transition>
+                <button @click="imageModal.show = false" class="absolute top-4 right-4 text-white hover:text-gray-300 text-4xl leading-none z-10 bg-black/50 rounded-full w-10 h-10 flex items-center justify-center touch-action-manipulation">&times;</button>
+                <img :src="imageModal.url" class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl relative" @click.away="imageModal.show = false">
             </div>
 
         </main>
