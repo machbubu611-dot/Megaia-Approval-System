@@ -85,6 +85,29 @@
         [x-cloak] { display: none !important; }
         .dragging { opacity: 0.5; background-color: #f3ecec; }
 
+        /* =========================================================================
+           全域跨裝置相容性備援樣式 (Ultimate Fallback CSS)
+           專為不支援 Tailwind CDN 的舊版 iOS Safari 量身打造，確保介面排版不崩壞
+        ========================================================================= */
+        body { margin: 0; padding: 0; background-color: #fbf8f8; color: #5a4c4c; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        
+        /* 登入頁面備援 */
+        .login-wrapper { display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 1rem; box-sizing: border-box; background-color: #fbf8f8; }
+        .login-card { background: white; padding: 2rem; border-radius: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 28rem; text-align: center; border: 1px solid #e3d5d5; box-sizing: border-box; margin: 0 auto; }
+        .login-logo { height: 5rem; max-width: 100%; object-fit: contain; margin: 0 auto 1.5rem auto; display: block; }
+        .login-title { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; color: #5a4c4c; }
+        .login-subtitle { font-size: 0.875rem; color: #5a4c4c; opacity: 0.6; margin-bottom: 2rem; }
+        .login-form { text-align: left; margin: 0; padding: 0; }
+        .login-form > div { margin-bottom: 1.25rem; }
+        .login-form label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.25rem; padding-left: 0.25rem; color: #5a4c4c; }
+        .login-input { width: 100%; border: 1px solid #e3d5d5; border-radius: 0.5rem; padding: 0.75rem; background-color: #fbf8f8; font-size: 16px; box-sizing: border-box; color: #5a4c4c; }
+        .login-input:focus { outline: none; border-color: #c49a9a; box-shadow: 0 0 0 2px rgba(196,154,154,0.5); }
+        .login-btn { width: 100%; background-color: #c49a9a; color: white; font-weight: bold; border-radius: 0.5rem; padding: 0.75rem; border: none; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 0.5rem; font-size: 1rem; margin-top: 1.5rem; transition: background-color 0.2s; box-sizing: border-box; }
+        .login-btn:hover { background-color: #b58585; }
+        .login-btn:disabled { background-color: #9ca3af; cursor: not-allowed; }
+        .pwd-toggle { position: absolute; right: 0; top: 0; bottom: 0; display: flex; align-items: center; padding-right: 0.75rem; padding-left: 0.75rem; color: #9ca3af; background: transparent; border: none; cursor: pointer; height: 100%; }
+        .pwd-toggle svg { width: 1.25rem; height: 1.25rem; }
+
         /* --- 防爆圖示核心 (解決 Safari SVG 放大的致命問題) --- */
         svg { flex-shrink: 0; max-width: 100%; height: auto; }
         svg.w-3 { width: 0.75rem !important; height: 0.75rem !important; }
@@ -523,32 +546,33 @@
 <body class="bg-morandi-bg text-morandi-text font-sans antialiased min-h-screen" x-data="megaSignoffSystem">
 
     <!-- 未登入畫面 (Login) -->
-    <div x-show="!currentUser" class="min-h-screen flex items-center justify-center p-4 sm:p-8 bg-gradient-to-br from-morandi-bg to-morandi-surface" x-transition>
-        <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-md border border-morandi-border text-center">
+    <div x-show="!currentUser" class="login-wrapper min-h-screen flex items-center justify-center p-4 sm:p-8 bg-gradient-to-br from-morandi-bg to-morandi-surface" x-transition>
+        <div class="login-card bg-white p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-md border border-morandi-border text-center">
             
             <div class="mb-4 sm:mb-6 flex justify-center">
-                <img src="logo.png" alt="美加醫美 MEGAIA" class="h-16 sm:h-20 object-contain mx-auto"
+                <img src="logo.png" alt="美加醫美 MEGAIA" class="login-logo h-16 sm:h-20 object-contain mx-auto"
                      onerror="this.onerror=null; this.outerHTML='<div class=\'flex flex-col items-center\'><div class=\'text-2xl sm:text-3xl font-bold text-[#d43f4a] tracking-widest mb-1\'>美加醫美</div><div class=\'text-xs sm:text-sm text-[#d43f4a] tracking-[0.2em] font-serif\'>MEGAIA</div></div>';">
             </div>
-            <h1 class="text-lg sm:text-xl font-bold mb-2 text-morandi-text">營運現場簽核系統</h1>
-            <p class="text-xs sm:text-sm text-morandi-text/60 mb-6 sm:mb-8">請輸入您的專屬帳號密碼登入</p>
+            <h1 class="login-title text-lg sm:text-xl font-bold mb-2 text-morandi-text">營運現場簽核系統</h1>
+            <p class="login-subtitle text-xs sm:text-sm text-morandi-text/60 mb-6 sm:mb-8">請輸入您的專屬帳號密碼登入</p>
             
-            <form @submit.prevent="login" class="space-y-4 sm:space-y-5 text-left">
+            <form @submit.prevent="login" class="login-form space-y-4 sm:space-y-5 text-left">
                 <div>
                     <label class="block text-xs sm:text-sm font-medium mb-1 pl-1">帳號 Username</label>
-                    <input type="text" x-model="loginForm.username" required class="w-full border border-morandi-border rounded-lg p-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg placeholder-morandi-text/40" placeholder="例如: admin / M001 / HQ01">
+                    <input type="text" x-model="loginForm.username" required class="login-input w-full border border-morandi-border rounded-lg p-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg placeholder-morandi-text/40" placeholder="例如: admin / M001 / HQ01">
                 </div>
                 <div>
                     <label class="block text-xs sm:text-sm font-medium mb-1 pl-1">密碼 Password</label>
-                    <div class="relative">
-                        <input :type="showLoginPwd ? 'text' : 'password'" x-model="loginForm.password" required class="w-full border border-morandi-border rounded-lg p-3 pr-10 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg placeholder-morandi-text/40" placeholder="預設請輸入 888">
-                        <button type="button" @click="showLoginPwd = !showLoginPwd" class="absolute inset-y-0 right-0 flex items-center pr-3 text-morandi-text/40 hover:text-morandi-primary transition-colors focus:outline-none touch-action-manipulation">
+                    <div class="relative" style="position: relative;">
+                        <input :type="showLoginPwd ? 'text' : 'password'" x-model="loginForm.password" required class="login-input w-full border border-morandi-border rounded-lg p-3 pr-10 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg placeholder-morandi-text/40" placeholder="預設請輸入 888" style="margin-bottom: 0;">
+                        <button type="button" @click="showLoginPwd = !showLoginPwd" class="pwd-toggle absolute inset-y-0 right-0 flex items-center pr-3 text-morandi-text/40 hover:text-morandi-primary transition-colors focus:outline-none touch-action-manipulation">
                             <svg x-show="!showLoginPwd" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
                             <svg x-show="showLoginPwd" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" x-cloak><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
                         </button>
                     </div>
                 </div>
-                <button type="submit" class="w-full text-white font-bold rounded-lg p-3 transition-colors shadow-md mt-4 sm:mt-6 flex justify-center items-center gap-2 touch-action-manipulation bg-morandi-primary hover:bg-morandi-hover disabled:bg-gray-400 disabled:cursor-not-allowed" :disabled="!isDbReady">
+                <button type="submit" class="login-btn w-full text-white font-bold rounded-lg p-3 transition-colors shadow-md mt-4 sm:mt-6 flex justify-center items-center gap-2 touch-action-manipulation bg-morandi-primary hover:bg-morandi-hover disabled:bg-gray-400 disabled:cursor-not-allowed" :disabled="!isDbReady">
+                    <svg x-show="!isDbReady" class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                     <span x-text="isDbReady ? '登入系統' : '系統連線準備中...'">登入系統</span>
                 </button>
             </form>
