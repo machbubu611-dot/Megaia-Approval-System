@@ -109,7 +109,8 @@
         /* 若 Tailwind 完全失效時的底層顏色備援 */
         .bg-morandi-bg { background-color: #fbf8f8; }
         .text-morandi-text { color: #5a4c4c; }
-        .bg-morandi-primary { background-color: #c49a9a; }
+        .bg-morandi-primary { background-color: #c49a9a !important; }
+        .hover\:bg-morandi-hover:hover { background-color: #b58585 !important; }
     </style>
     
     <script>
@@ -192,6 +193,13 @@
                             window.initMegaiaDB(this);
                         }
                     }, 100);
+
+                    // 防呆連線保護：若 3 秒內 Firebase 仍未載入完成，強制解鎖登入按鈕
+                    setTimeout(() => {
+                        if (!this.isDbReady) {
+                            this.isDbReady = true;
+                        }
+                    }, 3000);
                 },
 
                 get isSpecialCategory() { return ['人事薪酬', '專案業務'].includes(this.form.category); },
@@ -510,6 +518,7 @@
             }));
         });
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body class="bg-morandi-bg text-morandi-text font-sans antialiased min-h-screen" x-data="megaSignoffSystem">
 
@@ -527,21 +536,20 @@
             <form @submit.prevent="login" class="space-y-4 sm:space-y-5 text-left">
                 <div>
                     <label class="block text-xs sm:text-sm font-medium mb-1 pl-1">帳號 Username</label>
-                    <input type="text" x-model="loginForm.username" required class="w-full border border-morandi-border rounded-lg p-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg placeholder-morandi-text/40" placeholder="例如: admin / M001 / HQ01" :disabled="!isDbReady">
+                    <input type="text" x-model="loginForm.username" required class="w-full border border-morandi-border rounded-lg p-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg placeholder-morandi-text/40" placeholder="例如: admin / M001 / HQ01">
                 </div>
                 <div>
                     <label class="block text-xs sm:text-sm font-medium mb-1 pl-1">密碼 Password</label>
                     <div class="relative">
-                        <input :type="showLoginPwd ? 'text' : 'password'" x-model="loginForm.password" required class="w-full border border-morandi-border rounded-lg p-3 pr-10 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg placeholder-morandi-text/40" placeholder="預設請輸入 888" :disabled="!isDbReady">
-                        <button type="button" @click="showLoginPwd = !showLoginPwd" class="absolute inset-y-0 right-0 flex items-center pr-3 text-morandi-text/40 hover:text-morandi-primary transition-colors focus:outline-none touch-action-manipulation" :disabled="!isDbReady">
+                        <input :type="showLoginPwd ? 'text' : 'password'" x-model="loginForm.password" required class="w-full border border-morandi-border rounded-lg p-3 pr-10 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-morandi-primary/50 bg-morandi-bg placeholder-morandi-text/40" placeholder="預設請輸入 888">
+                        <button type="button" @click="showLoginPwd = !showLoginPwd" class="absolute inset-y-0 right-0 flex items-center pr-3 text-morandi-text/40 hover:text-morandi-primary transition-colors focus:outline-none touch-action-manipulation">
                             <svg x-show="!showLoginPwd" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
                             <svg x-show="showLoginPwd" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" x-cloak><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
                         </button>
                     </div>
                 </div>
-                <button type="submit" class="w-full text-white font-bold rounded-lg p-3 transition-colors shadow-md mt-4 sm:mt-6 flex justify-center items-center gap-2 touch-action-manipulation" :class="isDbReady ? 'bg-morandi-primary hover:bg-morandi-hover' : 'bg-gray-400 cursor-not-allowed'" :disabled="!isDbReady">
-                    <svg x-show="!isDbReady" class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    <span x-text="isDbReady ? '登入系統' : '系統連線準備中...'"></span>
+                <button type="submit" class="w-full text-white font-bold rounded-lg p-3 transition-colors shadow-md mt-4 sm:mt-6 flex justify-center items-center gap-2 touch-action-manipulation bg-morandi-primary hover:bg-morandi-hover disabled:bg-gray-400 disabled:cursor-not-allowed" :disabled="!isDbReady">
+                    <span x-text="isDbReady ? '登入系統' : '系統連線準備中...'">登入系統</span>
                 </button>
             </form>
         </div>
